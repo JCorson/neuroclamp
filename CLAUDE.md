@@ -79,6 +79,16 @@ Every function and method — public, private, and dunder — must have a Google
 
 - Omit type annotations from `Args:` — they are already in the signature
 
+## Documentation
+
+Documentation lives in three places that must stay in sync. Evaluate and update all three whenever a change affects user-facing behavior, the public API, or neuron/protocol/analysis semantics:
+
+- **Prose pages** in `docs/` (`index.md`, `presets.md`, `protocols-and-analysis.md`, `developer-guide.md`) — pure Markdown shared by the mkdocs site and the in-UI `/help` page. Update the relevant page when behavior or supported options change.
+- **In-UI help** — the `/help` Reflex route renders the `docs/` prose. No separate copy exists; editing the prose updates the UI. Add a new topic to `patch_sim_ui/docs_loader.py` when a new prose page is added.
+- **Docstrings** — Google-style docstrings on public symbols feed the mkdocstrings API reference (`docs/api/`). When you add or change a public symbol in `patch_sim/`, update its docstring and add a `:::` entry under `docs/api/` if it is a new top-level export.
+
+Keep prose to Markdown that renders the same in both the UI and mkdocs (fenced code blocks and tables are safe); avoid bare `$` (the UI renderer treats it as math). Build the docs site to catch broken references: `uv run --frozen --group=docs mkdocs build --strict`.
+
 ## Testing conventions
 
 Tests are split into four buckets under `tests/`:
@@ -142,11 +152,14 @@ a PR is opened. All must pass with no errors.
 **Before every commit:** `/ruff check .`, `/ruff format --check .`, `/ty check`,
 and `/uv run --frozen -m pytest tests/unit`.
 If the commit touches `patch_sim_ui/`, also run `tests/ui` and `tests/e2e`.
+If the commit touches `docs/` or public docstrings, also run
+`uv run --frozen --group=docs mkdocs build --strict`.
 
 **Before opening a PR:** the default suite (`/uv run --frozen -m pytest`,
 which covers `tests/unit`, `tests/integration` and `tests/ui`) plus
 `/uv run --frozen -m pytest tests/e2e`, which is outside the default
 `testpaths`. `tests/integration` runs in CI only on a cron job, so this
-local run is its only pre-merge check.
+local run is its only pre-merge check. If the branch touches `docs/` or
+public docstrings, also run the strict docs build.
 
 **Before finishing a task that does not end in a PR:** run the pre-PR checks.
