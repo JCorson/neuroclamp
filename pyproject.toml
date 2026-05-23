@@ -77,6 +77,9 @@ docs = [
     "mkdocs-material>=9.6.0",
     "mkdocstrings[python]>=0.27.0",
 ]
+screenshots = [
+    "playwright>=1.49.0",
+]
 ui = [
     "plotly>=6.9.0",
     "reflex[pydantic]>=0.10.1",
