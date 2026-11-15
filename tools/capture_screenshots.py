@@ -16,6 +16,7 @@ defaults to ``http://localhost:3000`` and can be overridden with the
 ``PATCH_SIM_URL`` environment variable.
 """
 
+import json
 import os
 import pathlib
 import sys
@@ -57,17 +58,28 @@ def _run_and_wait(page: Page) -> None:
     """
     # Plotly.react() adds the ``js-plotly-plot`` class to the target div itself
     # (``#ps-trace-plot``), not to a descendant, so check the element directly.
-    rendered = (
+    # The signature summarizes the plotted data (trace count and per-trace
+    # sample counts), or is null before the first render. Waiting for it to
+    # change, rather than for any plot to exist, keeps a later run from being
+    # captured while the previous run's plot is still on screen.
+    signature = (
         "() => { const e = document.querySelector('#ps-trace-plot');"
-        " return !!e && (e.classList.contains('js-plotly-plot')"
-        " || !!e.querySelector('.js-plotly-plot')); }"
+        " const g = e && (e.classList.contains('js-plotly-plot')"
+        " ? e : e.querySelector('.js-plotly-plot'));"
+        " if (!g || !g.data) return null;"
+        " return JSON.stringify(g.data.map(d => d.x ? d.x.length : 0)); }"
+    )
+    before = page.evaluate(signature)
+    changed = (
+        f"() => {{ const s = ({signature})();"
+        f" return s !== null && s !== {json.dumps(before)}; }}"
     )
     for _ in range(5):
         run_btn = page.get_by_role("button", name="Run", exact=True)
         if run_btn.count() > 0 and run_btn.first.is_visible():
             run_btn.first.click()
         try:
-            page.wait_for_function(rendered, timeout=15_000)
+            page.wait_for_function(changed, timeout=15_000)
             page.wait_for_timeout(1_500)
             return
         except PlaywrightTimeout:
