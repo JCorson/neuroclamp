@@ -40,3 +40,28 @@ The controls beneath the plot manage what is shown:
   protocols.
 - **Logs** opens a panel of simulation messages (warnings, errors, debug). You
   can filter by level and clear it.
+- **Export CSV** downloads the latest result as a CSV file (see below). It is
+  disabled until a simulation has run, and while one is running.
+
+## Exporting results
+
+**Export CSV** saves the most recent run as
+`patch-sim_<neuron>_<protocol>_<timestamp>.csv`. The file has one row per time
+sample and one column per quantity:
+
+- `time_ms` first.
+- Current clamp: membrane voltage (`V_mV`) and the injected stimulus
+  (`Istim_uA_cm2`). Voltage clamp: the command voltage (`Vcmd_mV`), since the
+  recorded voltage equals it.
+- Then the total current, each channel's current, the gating variables, and
+  intracellular calcium (`ca_i_mM`) when the model tracks it.
+- Multi-sweep protocols add a `_s01`, `_s02`, … suffix per sweep, with each
+  quantity's sweeps side by side.
+
+Every simulated quantity is exported, whether or not it is visible on the plot.
+dV/dt and stored reference overlays are not included. A block of `# key: value`
+comment lines above the header records the neuron, protocol, and sampling
+settings that produced the data. Most spreadsheet and analysis tools can skip
+these lines (for example, `pandas.read_csv(path, comment="#")`).
+
+To save an image of a plot instead, use the camera icon in the plot's toolbar.

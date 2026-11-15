@@ -43,8 +43,8 @@ The window has three regions:
 
 - [Configuring the neuron](neuron.md) — presets, channels, and ion concentrations.
 - [Setting up a protocol](protocol.md) — clamp modes, protocol types, and sweeps.
-- [Running & reading results](running.md) — the trace plot, sweeps, and stored
-  overlays.
+- [Running & reading results](running.md) — the trace plot, sweeps, stored
+  overlays, and CSV export.
 - [Analysis panels](analysis.md) — the metrics computed from each run.
 
 For the Python library and API reference, use the **API reference** link at the
