@@ -7,7 +7,7 @@ pytest.importorskip("starlette")
 from starlette.testclient import TestClient  # noqa: E402
 
 from patch_sim_ui.api import exports  # noqa: E402
-from patch_sim_ui.api.exports import put, starlette_app  # noqa: E402
+from patch_sim_ui.api.exports import download_js, put, starlette_app  # noqa: E402
 
 
 @pytest.fixture(autouse=True)
@@ -58,3 +58,11 @@ def test_fifo_eviction() -> None:
     assert tokens[0] not in exports._STORE
     assert tokens[-1] in exports._STORE
     assert TestClient(starlette_app).get(f"/api/export/{tokens[0]}").status_code == 404
+
+
+def test_download_js_targets_export_route() -> None:
+    """The download snippet loads /api/export/{token} in a self-removing iframe."""
+    js = download_js("http://example.test", "tok123")
+    assert '"http://example.test/api/export/tok123"' in js
+    assert "iframe" in js
+    assert "remove()" in js

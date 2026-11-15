@@ -47,7 +47,6 @@ from patch_sim_ui.state._common import (
     _PLOTLY_GD_JS,
 )
 from patch_sim_ui.state._figure_js import (
-    _render_download_js,
     _render_fetch_figure_js,
     _render_sweep_highlight_js,
 )
@@ -672,7 +671,7 @@ class SimulationState(rx.State):
             log_st = await self.get_state(LogState)
             log_st._refresh_logs()
         api_url = _get_config().api_url.rstrip("/")
-        yield rx.call_script(_render_download_js(api_url, token))
+        yield rx.call_script(exports.download_js(api_url, token))
 
     @rx.event(background=True)
     async def run_continuous(self) -> AsyncGenerator[Any, None]:

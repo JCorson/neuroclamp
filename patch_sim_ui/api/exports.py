@@ -21,6 +21,7 @@ Deployment constraints:
   need a per-session auth gate in ``_handle_export``.
 """
 
+import json
 import re
 import threading
 from collections import OrderedDict
@@ -99,6 +100,33 @@ async def _handle_export(request: Request) -> Response:
         content=payload,
         media_type="text/csv; charset=utf-8",
         headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
+def download_js(api_url: str, token: str) -> str:
+    """Return JS that makes the browser download the export stored under *token*.
+
+    Loads ``/api/export/{token}`` in a hidden iframe that removes itself after
+    60 s; the server supplies the filename via ``Content-Disposition``.  A
+    failed request (e.g. an evicted token) renders inside the iframe, so the
+    app tab never navigates away.
+
+    Args:
+        api_url: Base backend URL with any trailing slash already stripped.
+        token: Token previously passed to :func:`put`.
+
+    Returns:
+        A JS snippet ready for ``rx.call_script``.
+    """
+    url = json.dumps(f"{api_url}/api/export/{token}")
+    return (
+        "(function(){"
+        "var f=document.createElement('iframe');"
+        "f.style.display='none';"
+        f"f.src={url};"
+        "document.body.appendChild(f);"
+        "setTimeout(function(){f.remove();},60000);"
+        "})();"
     )
 
 
