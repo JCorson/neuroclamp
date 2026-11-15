@@ -689,7 +689,7 @@ def build_figure(
                     hovertemplate="%{customdata}<extra></extra>",
                     customdata=html_strings,
                     name="",
-                    meta={"sweep": -1, "carrier": True},
+                    meta={"sweep": -1},
                 ),
                 row=sub_row,
                 col=1,

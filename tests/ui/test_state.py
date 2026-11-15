@@ -2601,23 +2601,3 @@ def test_clear_for_new_protocol_clears_export_context() -> None:
     assert st._export_metadata == []
     assert st._export_neuron_name == ""
     assert st._export_protocol_name == ""
-
-
-def test_export_figure_rejects_bad_format_and_missing_figure() -> None:
-    """export_figure is a no-op for unsupported formats or without a figure."""
-    st = _make_state()
-    assert st.export_figure("png") is None
-    st.sim_token = "tok"
-    assert st.export_figure("gif") is None
-
-
-def test_export_figure_builds_script_for_current_token() -> None:
-    """export_figure's script carries the token and an extensionless stem."""
-    st = _make_state()
-    st.sim_token = "tok"
-    event = st.export_figure("svg")
-    script = str(event)
-    assert "tok" in script
-    assert "patch-sim_" in script
-    assert ".svg" not in script
-    assert ".png" not in script

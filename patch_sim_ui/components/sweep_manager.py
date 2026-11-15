@@ -294,35 +294,21 @@ def _stored_chip(sweep) -> rx.Component:
     return _chip(sweep)
 
 
-def _export_menu() -> rx.Component:
-    """Dropdown menu for exporting the latest result as CSV, PNG, or SVG.
+def _export_button() -> rx.Component:
+    """Button that downloads the latest result's traces as a CSV file.
 
     Disabled while there is no result or a simulation is running.
 
     Returns:
-        A menu root whose trigger is the Export button.
+        The Export CSV button.
     """
-    disabled = ~SimulationState.has_result | SimulationState.is_running
-    return rx.menu.root(
-        rx.menu.trigger(
-            rx.button(
-                rx.icon("download"),
-                "Export",
-                size="1",
-                variant="soft",
-                disabled=disabled,
-            ),
-            disabled=disabled,
-        ),
-        rx.menu.content(
-            rx.menu.item("Traces as CSV", on_click=SimulationState.export_csv),
-            rx.menu.item(
-                "Figure as PNG", on_click=SimulationState.export_figure("png")
-            ),
-            rx.menu.item(
-                "Figure as SVG", on_click=SimulationState.export_figure("svg")
-            ),
-        ),
+    return rx.button(
+        rx.icon("download"),
+        "Export CSV",
+        on_click=SimulationState.export_csv,
+        size="1",
+        variant="soft",
+        disabled=~SimulationState.has_result | SimulationState.is_running,
     )
 
 
@@ -359,7 +345,7 @@ def sweep_manager() -> rx.Component:
                 size="1",
                 variant="soft",
             ),
-            _export_menu(),
+            _export_button(),
             rx.separator(orientation="vertical"),
             rx.text("Stored:", size="2", weight="bold"),
             rx.foreach(SimulationState.stored_traces, _stored_chip),
