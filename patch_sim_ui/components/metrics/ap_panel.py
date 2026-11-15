@@ -21,7 +21,6 @@ from patch_sim_ui.components.metrics.sfa_hyperpol_panel import (
     _ap_sfa_plot,
     _hyperpolarization_plot,
 )
-from patch_sim_ui.plotting._layout import ANALYSIS_PLOTLY_CONFIG
 from patch_sim_ui.state.analysis import AnalysisState
 
 _SPIKE_COLUMNS: tuple[RowColumn, ...] = (
@@ -159,7 +158,6 @@ def _ap_phase_plane_plot() -> rx.Component:
     return rx.flex(
         rx.plotly(
             data=AnalysisState.phase_plane_figure,
-            config=ANALYSIS_PLOTLY_CONFIG,
             width="100%",
         ),
         direction="column",
