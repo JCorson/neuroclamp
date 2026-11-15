@@ -14,8 +14,8 @@ The presets are registered in two parallel structures:
 import patch_sim
 
 # Map of display name -> factory function.
-patch_sim.NEURON_PRESETS            # {"Squid Giant Axon (Classic HH)": <fn>, ...}
-patch_sim.NEURON_PRESET_NAMES       # ordered list of the display names
+patch_sim.NEURON_PRESETS  # {"Squid Giant Axon (Classic HH)": <fn>, ...}
+patch_sim.NEURON_PRESET_NAMES  # ordered list of the display names
 
 # Build a neuron from a preset:
 neuron = patch_sim.NEURON_PRESETS["Cortical Pyramidal Neuron"]()
