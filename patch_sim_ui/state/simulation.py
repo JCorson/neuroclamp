@@ -662,7 +662,7 @@ class SimulationState(rx.State):
         metadata.insert(1, ("exported_at", now.isoformat(timespec="seconds")))
         text = await loop.run_in_executor(None, sweeps_to_csv, sweeps, metadata)
         payload = text.encode("utf-8")
-        filename = export_filename(neuron_name, protocol_name, "csv", now)
+        filename = export_filename(neuron_name, protocol_name, now)
         token = uuid.uuid4().hex
         exports.put(token, filename, payload)
         logger.info("CSV export ready: %s (%.1f MB)", filename, len(payload) / 1e6)

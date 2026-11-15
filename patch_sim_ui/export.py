@@ -93,20 +93,19 @@ def _slugify(text: str, max_len: int = 40) -> str:
     return slug or "unnamed"
 
 
-def export_filename(neuron_preset: str, protocol: str, ext: str, now: datetime) -> str:
-    """Return the download filename for an export.
+def export_filename(neuron_preset: str, protocol: str, now: datetime) -> str:
+    """Return the download filename for a CSV export.
 
     Args:
         neuron_preset: Neuron preset name.
         protocol: Protocol preset name (or protocol type when no preset).
-        ext: File extension without the dot (e.g. ``"csv"``).
         now: Timestamp to embed.
 
     Returns:
-        ``patch-sim_<neuron>_<protocol>_<YYYYmmdd-HHMMSS>.<ext>``.
+        ``patch-sim_<neuron>_<protocol>_<YYYYmmdd-HHMMSS>.csv``.
     """
     stamp = now.strftime("%Y%m%d-%H%M%S")
-    return f"patch-sim_{_slugify(neuron_preset)}_{_slugify(protocol)}_{stamp}.{ext}"
+    return f"patch-sim_{_slugify(neuron_preset)}_{_slugify(protocol)}_{stamp}.csv"
 
 
 def _sweep_suffix(index: int, n_sweeps: int) -> str:

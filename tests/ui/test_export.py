@@ -219,7 +219,6 @@ def test_export_filename_format() -> None:
     name = export_filename(
         "Squid Giant Axon (Classic HH)",
         "Action Potential",
-        "csv",
         datetime(2026, 1, 2, 3, 4, 5),
     )
     assert name == (
