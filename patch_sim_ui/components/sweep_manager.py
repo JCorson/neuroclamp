@@ -294,12 +294,30 @@ def _stored_chip(sweep) -> rx.Component:
     return _chip(sweep)
 
 
+def _export_button() -> rx.Component:
+    """Button that downloads the latest result's traces as a CSV file.
+
+    Disabled while there is no result or a simulation is running.
+
+    Returns:
+        The Export CSV button.
+    """
+    return rx.button(
+        rx.icon("download"),
+        "Export CSV",
+        on_click=SimulationState.export_csv,
+        size="1",
+        variant="soft",
+        disabled=~SimulationState.has_result | SimulationState.is_running,
+    )
+
+
 def sweep_manager() -> rx.Component:
     """Trace visibility popover and stored-trace management bar.
 
     Returns:
-        A vstack containing the Traces popover button, hover toggle, and the
-        stored-trace controls (Store, Clear Stored).
+        A vstack containing the Traces popover button, hover toggle, Logs and
+        Export buttons, and the stored-trace controls (Store, Clear Stored).
     """
     return rx.vstack(
         rx.hstack(
@@ -327,6 +345,7 @@ def sweep_manager() -> rx.Component:
                 size="1",
                 variant="soft",
             ),
+            _export_button(),
             rx.separator(orientation="vertical"),
             rx.text("Stored:", size="2", weight="bold"),
             rx.foreach(SimulationState.stored_traces, _stored_chip),
