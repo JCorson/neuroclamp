@@ -66,19 +66,23 @@ docker compose up --build
 
 Then open `http://localhost:3000`. The container runs Reflex in production
 mode and serves both the UI and the backend on port 3000. Each start rebuilds
-the frontend bundle, so the app takes a minute or two to come up; give Docker
-at least 2 GB of memory.
+the frontend bundle, which takes a few seconds before the app responds.
 
-The app assumes the browser reaches it at `http://localhost:3000`. To publish it
-on a different host port, or to open it from another machine, pass the URL the
-browser uses as `REFLEX_API_URL`:
+If the browser reaches the app at any URL other than `http://localhost:3000`,
+pass that URL as `REFLEX_API_URL`:
 
 ```
 docker run --rm -p 8080:3000 -e REFLEX_API_URL=http://localhost:8080 patch-sim
 ```
 
-Without it the page loads, but trace plots do not render. Reflex telemetry is
-disabled in the image.
+- **Different host port** (e.g. `-p 8080:3000`): without `REFLEX_API_URL` the
+  page cannot reach its backend at all, so nothing responds.
+- **Another machine on port 3000** (e.g. `http://192.168.1.20:3000`): without
+  `REFLEX_API_URL` the UI connects, but trace plots and **Export CSV** fail.
+
+The container runs as a non-root user (uid 1000) and needs a writable
+filesystem, because Reflex writes its build and session state at startup.
+Reflex telemetry is disabled in the image.
 
 ---
 

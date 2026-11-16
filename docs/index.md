@@ -69,7 +69,7 @@ docker run --rm -p 3000:3000 patch-sim
 ```
 
 See [Running with Docker](https://github.com/JCorson/patch-sim#running-with-docker)
-in the README for Docker Compose, custom ports, and memory requirements.
+in the README for Docker Compose, custom ports, and access from other machines.
 
 ## A first simulation in code
 
