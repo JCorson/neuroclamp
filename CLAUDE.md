@@ -79,6 +79,14 @@ Every function and method — public, private, and dunder — must have a Google
 
 - Omit type annotations from `Args:` — they are already in the signature
 
+## Documentation
+
+There are two documentation tracks, plus the docstrings that feed the API reference. Evaluate and update whatever a change touches:
+
+- **Library documentation** — the mkdocs site, for developers using `patch_sim` in Python. Prose pages live in `docs/` (`index.md`, `presets.md`, `protocols-and-analysis.md`) and the API reference is auto-generated under `docs/api/`. Update the relevant prose page when library behavior or supported options change. Build it to catch broken references: `uv run --frozen --group=docs mkdocs build --strict`. Avoid bare `$` and keep to Markdown that renders under both mkdocs and GitHub.
+- **Application documentation** — the in-app `/help` route, a user guide for the web app. Pages live in `patch_sim_ui/help_content/*.md` and are rendered by `rx.markdown`; add a new topic to `_TOPICS` in `patch_sim_ui/docs_loader.py` when you add a page. Update these when the UI's controls, panels, or workflow change. Screenshots are served from `assets/screenshots/` and regenerated with `uv run --frozen --group screenshots python tools/capture_screenshots.py` (against a running `uv run reflex run --env prod` — production mode avoids the dev hot-reloader restarting the backend mid-capture); refresh them when the UI's appearance changes.
+- **Docstrings** — Google-style docstrings on public symbols feed the mkdocstrings API reference. When you add or change a public symbol in `patch_sim/`, update its docstring and add a `:::` entry under `docs/api/` if it is a new top-level export.
+
 ## Testing conventions
 
 Tests are split into four buckets under `tests/`:
@@ -142,11 +150,14 @@ a PR is opened. All must pass with no errors.
 **Before every commit:** `/ruff check .`, `/ruff format --check .`, `/ty check`,
 and `/uv run --frozen -m pytest tests/unit`.
 If the commit touches `patch_sim_ui/`, also run `tests/ui` and `tests/e2e`.
+If the commit touches `docs/` or public docstrings, also run
+`uv run --frozen --group=docs mkdocs build --strict`.
 
 **Before opening a PR:** the default suite (`/uv run --frozen -m pytest`,
 which covers `tests/unit`, `tests/integration` and `tests/ui`) plus
 `/uv run --frozen -m pytest tests/e2e`, which is outside the default
 `testpaths`. `tests/integration` runs in CI only on a cron job, so this
-local run is its only pre-merge check.
+local run is its only pre-merge check. If the branch touches `docs/` or
+public docstrings, also run the strict docs build.
 
 **Before finishing a task that does not end in a PR:** run the pre-PR checks.

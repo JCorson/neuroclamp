@@ -4,6 +4,7 @@ import reflex as rx
 
 from patch_sim_ui.api.exports import starlette_app as _exports_app
 from patch_sim_ui.api.traces import starlette_app as _traces_app
+from patch_sim_ui.components.help_page import help_page
 from patch_sim_ui.components.log_panel import log_panel
 from patch_sim_ui.components.metrics import analysis_sidebar
 from patch_sim_ui.components.neuron_panel import neuron_panel
@@ -72,6 +73,14 @@ def _header() -> rx.Component:
             spacing="2",
             align="center",
         ),
+        rx.tooltip(
+            rx.link(
+                rx.icon_button(rx.icon("circle-help"), variant="ghost", size="2"),
+                href="/help",
+                is_external=True,
+            ),
+            content="Help & documentation",
+        ),
         rx.color_mode.button(allow_system=True, variant="ghost", size="2"),
         width="100%",
         padding_x="4",
@@ -115,6 +124,7 @@ def _sidebar() -> rx.Component:
         min_width="280px",
         border_right="1px solid var(--gray-4)",
         background="var(--gray-1)",
+        id="ps-sidebar",
     )
 
 
@@ -181,4 +191,9 @@ app.add_page(
     route="/",
     title="Patch Clamp Simulator",
     on_load=SimulationState.initialize_defaults,
+)
+app.add_page(
+    help_page,
+    route="/help",
+    title="Help — Patch Clamp Simulator",
 )
