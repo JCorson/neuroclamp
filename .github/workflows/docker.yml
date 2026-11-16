@@ -33,9 +33,13 @@ on:
       - .github/workflows/docker.yml
   workflow_dispatch:
 
+permissions:
+  contents: read
+
 jobs:
   build-and-smoke-test:
     runs-on: ubuntu-latest
+    timeout-minutes: 30
 
     steps:
       - uses: actions/checkout@v7
@@ -58,7 +62,7 @@ jobs:
       - name: Wait for the app
         run: |
           for _ in $(seq 1 60); do
-            if curl -fsS http://localhost:3000/ping; then exit 0; fi
+            if curl -fsS --max-time 5 http://localhost:3000/ping; then exit 0; fi
             if [ "$(docker inspect -f '{{.State.Running}}' patch-sim)" != true ]; then
               echo "Container exited before the app came up"
               exit 1
@@ -70,9 +74,9 @@ jobs:
 
       - name: Smoke-test HTTP routes
         run: |
-          curl -fsS http://localhost:3000/ | grep -qi '<html'
-          curl -fsS -o /dev/null http://localhost:3000/help
-          curl -fsS -o /dev/null http://localhost:3000/screenshots/overview.png
+          curl -fsS --max-time 10 http://localhost:3000/ | grep -qi '<html'
+          curl -fsS --max-time 10 -o /dev/null http://localhost:3000/help
+          curl -fsS --max-time 10 -o /dev/null http://localhost:3000/screenshots/overview.png
 
       - name: Install uv
         uses: astral-sh/setup-uv@v7
@@ -80,8 +84,16 @@ jobs:
       - name: Run a simulation end to end in a browser
         run: |
           uv sync --frozen --no-dev --group=screenshots
-          uv run --frozen playwright install --with-deps chromium
-          PATCH_SIM_URL=http://localhost:3000 uv run --frozen python tools/capture_screenshots.py
+          uv run --frozen --no-sync playwright install --with-deps chromium
+          PATCH_SIM_URL=http://localhost:3000 uv run --frozen --no-sync python tools/capture_screenshots.py
+
+      - name: Upload browser screenshots
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: smoke-test-screenshots
+          path: assets/screenshots/
+          if-no-files-found: ignore
 
       - name: Container logs
         if: always()
