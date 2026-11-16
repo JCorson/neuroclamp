@@ -47,6 +47,39 @@ uv run reflex run
 
 Then open `http://localhost:3000` in your browser.
 
+### Running with Docker
+
+You can run the web UI without installing uv, Python, or Node; only
+[Docker](https://docs.docker.com/get-started/get-docker/) is required. From the
+repository root:
+
+```
+docker build -t patch-sim .
+docker run --rm -p 3000:3000 patch-sim
+```
+
+or, with Docker Compose:
+
+```
+docker compose up --build
+```
+
+Then open `http://localhost:3000`. The container runs Reflex in production
+mode and serves both the UI and the backend on port 3000. Each start rebuilds
+the frontend bundle, so the app takes a minute or two to come up; give Docker
+at least 2 GB of memory.
+
+The app assumes the browser reaches it at `http://localhost:3000`. To publish it
+on a different host port, or to open it from another machine, pass the URL the
+browser uses as `REFLEX_API_URL`:
+
+```
+docker run --rm -p 8080:3000 -e REFLEX_API_URL=http://localhost:8080 patch-sim
+```
+
+Without it the page loads, but trace plots do not render. Reflex telemetry is
+disabled in the image.
+
 ---
 
 ## Getting started with development
