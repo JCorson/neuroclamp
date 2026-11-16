@@ -1,0 +1,14 @@
+services:
+  patch-sim:
+    build: .
+    image: patch-sim
+    ports:
+      - "3000:3000"
+    # To publish on another host port, or to open the app from another
+    # machine, set the URL the browser uses to reach it, e.g.:
+    # ports:
+    #   - "8080:3000"
+    # environment:
+    #   REFLEX_API_URL: "http://localhost:8080"
+    init: true
+    restart: unless-stopped
