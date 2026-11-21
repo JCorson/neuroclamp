@@ -3,7 +3,8 @@ name: Docker
 on:
   push:
     branches: [main]
-    paths:
+    # Files that affect the image or this job; keep in step with .dockerignore.
+    paths: &image-paths
       - Dockerfile
       - .dockerignore
       - compose.yaml
@@ -18,19 +19,7 @@ on:
       - .github/workflows/docker.yml
   pull_request:
     branches: [main]
-    paths:
-      - Dockerfile
-      - .dockerignore
-      - compose.yaml
-      - pyproject.toml
-      - uv.lock
-      - .python-version
-      - rxconfig.py
-      - patch_sim/**
-      - patch_sim_ui/**
-      - assets/**
-      - tools/capture_screenshots.py
-      - .github/workflows/docker.yml
+    paths: *image-paths
   workflow_dispatch:
 
 permissions:
