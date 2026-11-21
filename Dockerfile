@@ -38,9 +38,9 @@ RUN --mount=type=cache,target=/home/app/.cache/uv,uid=1000,gid=1000 \
     --mount=type=bind,source=.python-version,target=.python-version \
     uv sync --frozen --no-dev --group=ui --no-install-project
 
+# The project has no build system, so uv never installs it: the app imports
+# patch_sim and patch_sim_ui straight from /app.
 COPY --chown=app:app . .
-RUN --mount=type=cache,target=/home/app/.cache/uv,uid=1000,gid=1000 \
-    uv sync --frozen --no-dev --group=ui
 
 # Install bun and the frontend packages and compile the frontend once, so the
 # container needs no network at startup and compile errors fail the build.
