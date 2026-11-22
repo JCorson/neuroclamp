@@ -4,7 +4,7 @@
 # Reflex prod mode serves the compiled frontend and the backend on one port
 # (3000). The tag pins the uv release; its Python minor version must match
 # .python-version, because UV_PYTHON_DOWNLOADS=never forbids a fallback.
-FROM ghcr.io/astral-sh/uv:0.13.8-python3.13-trixie-slim
+FROM ghcr.io/astral-sh/uv:0.13.9-python3.13-trixie-slim
 
 # Reflex's bun installer needs curl and unzip.
 RUN apt-get update \
