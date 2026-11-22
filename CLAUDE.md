@@ -134,8 +134,9 @@ using Trusted Publishing (no API tokens). The version is static in
 `pyproject.toml`.
 
 1. Bump the version: `uv version --bump patch` (or `minor`/`major`).
-2. In `CHANGELOG.md`, move the `## [Unreleased]` entries into a new
-   `## [X.Y.Z] - YYYY-MM-DD` section.
+2. In `CHANGELOG.md`, move the `## [Unreleased]` entries into the version's
+   section and date it as `## [X.Y.Z] - YYYY-MM-DD` (create the section, or
+   date an existing pending one such as `## [0.1.0] - Unreleased`).
 3. Merge to `main`, then tag and push: `git tag vX.Y.Z && git push origin vX.Y.Z`.
    The workflow fails if the tag does not match the project version.
 4. The workflow builds, checks the artifacts (`tools/check_dist.py`), smoke-tests

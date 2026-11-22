@@ -23,6 +23,7 @@ from pathlib import Path
 #: number of matches each.
 WHEEL_REQUIRED: dict[str, int] = {
     "patch_sim/__init__.py": 1,
+    "patch_sim/py.typed": 1,
     "patch_sim/presets/*.py": 1,
     "patch_sim_ui/__init__.py": 1,
     "patch_sim_ui/help_content/*.md": 5,

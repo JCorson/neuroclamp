@@ -4,7 +4,8 @@ name: Release
 # publishes with PyPI Trusted Publishing (OIDC, no API tokens).
 #
 # - Pull requests that touch packaging: build and smoke-test only.
-# - Manual run (workflow_dispatch): build, smoke-test, publish to TestPyPI.
+# - Manual run (workflow_dispatch): build and smoke-test; on main, also publish
+#   to TestPyPI.
 # - Tag push vX.Y.Z: build, smoke-test, publish to TestPyPI, then PyPI.
 on:
   push:
@@ -61,6 +62,9 @@ jobs:
     # on sys.path and without the ui extra.
     needs: build
     runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python: ["3.12", "3.13"]
     steps:
       - uses: actions/download-artifact@v8
         with:
@@ -72,7 +76,7 @@ jobs:
 
       - name: Install the wheel without extras
         run: |
-          uv venv "$RUNNER_TEMP/venv" --python 3.12
+          uv venv "$RUNNER_TEMP/venv" --python ${{ matrix.python }}
           uv pip install --python "$RUNNER_TEMP/venv/bin/python" dist/*.whl
 
       - name: Run a simulation and the CLI
@@ -156,7 +160,7 @@ jobs:
 
       - name: Run a simulation end to end in a browser
         run: |
-          uv sync --frozen --no-dev --no-install-project --group=browser
+          uv sync --frozen --no-install-project --only-group=browser
           uv run --frozen --no-sync playwright install --with-deps chromium
           PATCH_SIM_URL=http://localhost:3000 uv run --frozen --no-sync python tools/smoke_test.py
 
@@ -166,7 +170,10 @@ jobs:
 
   publish-testpypi:
     needs: [smoke-core, smoke-ui]
-    if: startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch'
+    # Tags, or a manual run from main; other branches never publish.
+    if: >-
+      startsWith(github.ref, 'refs/tags/v') ||
+      (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main')
     runs-on: ubuntu-latest
     environment:
       name: testpypi
