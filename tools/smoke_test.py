@@ -25,12 +25,29 @@ from playwright.sync_api import TimeoutError as PlaywrightTimeout
 
 BASE_URL = os.environ.get("PATCH_SIM_URL", "http://localhost:3000")
 
-#: JS predicate: the trace plot is rendered and holds at least one sample.
+#: JS expression for the rendered Plotly graph div, or null before the first
+#: render. Plotly.react() adds ``js-plotly-plot`` to ``#ps-trace-plot`` itself.
+_GRAPH_DIV = (
+    "(() => { const e = document.querySelector('#ps-trace-plot');"
+    " return e && (e.classList.contains('js-plotly-plot')"
+    " ? e : e.querySelector('.js-plotly-plot')); })()"
+)
+
+#: JS predicate: the trace plot holds at least one trace with samples. Plotly
+#: serializes numpy arrays as ``{dtype, bdata}`` (base64) objects, which
+#: ``graphDiv.data`` keeps as-is, so accept either encoding.
 _TRACE_HAS_DATA = (
-    "() => { const e = document.querySelector('#ps-trace-plot');"
-    " const g = e && (e.classList.contains('js-plotly-plot')"
-    " ? e : e.querySelector('.js-plotly-plot'));"
-    " return !!(g && g.data && g.data.some(d => d.x && d.x.length > 0)); }"
+    f"() => {{ const g = {_GRAPH_DIV};"
+    " return !!(g && g.data && g.data.some(d => d.x"
+    " && (d.x.length > 0 || (d.x.bdata && d.x.bdata.length > 0)))); }"
+)
+
+#: JS that summarizes the trace plot's state for a failure message.
+_DESCRIBE_PLOT = (
+    f"() => {{ const g = {_GRAPH_DIV};"
+    " if (!g) return 'no rendered Plotly graph in #ps-trace-plot';"
+    " return JSON.stringify((g.data || []).map(d => ({type: d.type,"
+    " x: d.x ? Object.keys(d.x).slice(0, 3) : null}))); }"
 )
 
 
@@ -84,7 +101,10 @@ def _run_simulation(page: Page) -> None:
             continue
         print("ok: simulation ran and the trace plot rendered")
         return
-    raise SmokeTestError("the trace plot did not render after clicking Run")
+    raise SmokeTestError(
+        "the trace plot did not render after clicking Run; plot state: "
+        f"{page.evaluate(_DESCRIBE_PLOT)}"
+    )
 
 
 def _export_csv(page: Page) -> None:
