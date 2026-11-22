@@ -6,7 +6,8 @@ renders (which exercises the figure-fetch API), and Export CSV returns a CSV
 (which exercises the export API). Both APIs are reached through the app's
 configured backend URL, so a wrong ``REFLEX_API_URL`` fails here.
 
-CI runs this against the Docker image; it works against any running app.
+CI runs this against the Docker image and against ``patch-sim ui`` started
+from the built wheel; it works against any running app.
 
 Usage:
     1. Start the app, e.g. ``docker run --rm -p 3000:3000 patch-sim``.

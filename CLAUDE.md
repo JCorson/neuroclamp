@@ -127,6 +127,25 @@ Additional conventions:
 
 ty enforces types in `patch_sim/` (core library) and UI code (`patch_sim_ui/`). Reflex, Plotly, and `patch_sim_ui` imports are replaced with `Any` for UI files and selected test files — see the `[[tool.ty.overrides]]` section in `pyproject.toml`. Do not spend time fixing ty errors in UI code.
 
+## Releasing
+
+The package is published to PyPI as `patch-sim` by `.github/workflows/release.yml`,
+using Trusted Publishing (no API tokens). The version is static in
+`pyproject.toml`.
+
+1. Bump the version: `uv version --bump patch` (or `minor`/`major`).
+2. In `CHANGELOG.md`, move the `## [Unreleased]` entries into a new
+   `## [X.Y.Z] - YYYY-MM-DD` section.
+3. Merge to `main`, then tag and push: `git tag vX.Y.Z && git push origin vX.Y.Z`.
+   The workflow fails if the tag does not match the project version.
+4. The workflow builds, checks the artifacts (`tools/check_dist.py`), smoke-tests
+   the wheel with and without the `ui` extra, publishes to TestPyPI, and then to
+   PyPI (the `pypi` environment may require approval).
+
+To dry-run against TestPyPI without a tag, run the workflow manually
+(`workflow_dispatch`). To check artifacts locally: `uv build` then
+`uv run --no-project python tools/check_dist.py dist`.
+
 ## GitHub CLI conventions
 
 `gh issue view <number>` triggers a GraphQL deprecation error because it fetches `projectCards`. Always request explicit fields instead:

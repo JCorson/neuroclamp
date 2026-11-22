@@ -1,0 +1,204 @@
+name: Release
+
+# Builds the sdist and wheel, smoke-tests the wheel in clean environments, and
+# publishes with PyPI Trusted Publishing (OIDC, no API tokens).
+#
+# - Pull requests that touch packaging: build and smoke-test only.
+# - Manual run (workflow_dispatch): build, smoke-test, publish to TestPyPI.
+# - Tag push vX.Y.Z: build, smoke-test, publish to TestPyPI, then PyPI.
+on:
+  push:
+    tags: ["v*"]
+  pull_request:
+    branches: [main]
+    paths:
+      - pyproject.toml
+      - uv.lock
+      - hatch_build.py
+      - patch_sim/**
+      - patch_sim_ui/**
+      - assets/**
+      - tools/check_dist.py
+      - tools/smoke_test.py
+      - .github/workflows/release.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v7
+
+      - name: Check the tag matches the project version
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: |
+          version="$(uv version --short)"
+          if [ "${GITHUB_REF_NAME#v}" != "$version" ]; then
+            echo "Tag $GITHUB_REF_NAME does not match project version $version"
+            exit 1
+          fi
+
+      - name: Build sdist and wheel
+        run: uv build
+
+      - name: Check artifact contents
+        run: uv run --no-project python tools/check_dist.py dist
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: dist
+          path: dist/
+          if-no-files-found: error
+
+  smoke-core:
+    # The library alone, installed from the wheel with no repository checkout
+    # on sys.path and without the ui extra.
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          name: dist
+          path: dist/
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v7
+
+      - name: Install the wheel without extras
+        run: |
+          uv venv "$RUNNER_TEMP/venv" --python 3.12
+          uv pip install --python "$RUNNER_TEMP/venv/bin/python" dist/*.whl
+
+      - name: Run a simulation and the CLI
+        working-directory: ${{ runner.temp }}
+        run: |
+          source venv/bin/activate
+          python -I - <<'EOF'
+          import importlib.util
+
+          import patch_sim
+          from patch_sim import simulate_current_clamp, step_current
+
+          neuron = patch_sim.NEURON_PRESETS["Squid Giant Axon (Classic HH)"]()
+          stimulus = step_current(duration=20.0, current_amplitude=15.0)
+          result = simulate_current_clamp(neuron, current_external=stimulus)
+          aps = patch_sim.analyze_aps(result["time"], result["voltage"])
+          assert aps.spike_count >= 1, aps.spike_count
+          for module in ("reflex", "plotly", "rxconfig"):
+              assert importlib.util.find_spec(module) is None, module
+          print("core library OK:", aps.spike_count, "spikes")
+          EOF
+          patch-sim --help
+          patch-sim --version
+          if patch-sim ui 2> ui.err; then
+            echo "patch-sim ui should fail without the ui extra"
+            exit 1
+          fi
+          grep -q 'pip install "patch-sim\[ui\]"' ui.err
+          if grep -q Traceback ui.err; then cat ui.err; exit 1; fi
+
+  smoke-ui:
+    # The full app from the wheel with the ui extra, started from outside the
+    # repository, then driven through a simulation in a headless browser.
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/download-artifact@v8
+        with:
+          name: dist
+          path: dist/
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v7
+
+      - name: Install the wheel with the ui extra
+        run: |
+          uv venv "$RUNNER_TEMP/venv" --python 3.12
+          wheel="$(ls dist/*.whl)"
+          uv pip install --python "$RUNNER_TEMP/venv/bin/python" "${wheel}[ui]"
+          "$RUNNER_TEMP/venv/bin/python" -I -c \
+            "import importlib.util as u; assert u.find_spec('rxconfig') is None"
+
+      - name: Start patch-sim ui
+        working-directory: ${{ runner.temp }}
+        run: |
+          nohup venv/bin/patch-sim ui --no-browser --port 3000 > patch-sim.log 2>&1 &
+          echo $! > patch-sim.pid
+
+      - name: Wait for the app
+        run: |
+          # The first launch installs bun and builds the frontend.
+          for _ in $(seq 1 120); do
+            if curl -fsS --max-time 5 http://localhost:3000/ping; then exit 0; fi
+            if ! kill -0 "$(cat "$RUNNER_TEMP/patch-sim.pid")" 2>/dev/null; then
+              echo "patch-sim exited before the app came up"
+              exit 1
+            fi
+            sleep 5
+          done
+          echo "App did not respond within 10 minutes"
+          exit 1
+
+      - name: Smoke-test HTTP routes
+        run: |
+          curl -fsS --max-time 10 http://localhost:3000/ | grep -qi '<html'
+          curl -fsS --max-time 10 -o /dev/null http://localhost:3000/help
+          curl -fsS --max-time 10 -o /dev/null http://localhost:3000/screenshots/overview.png
+
+      - name: Run a simulation end to end in a browser
+        run: |
+          uv sync --frozen --no-dev --no-install-project --group=browser
+          uv run --frozen --no-sync playwright install --with-deps chromium
+          PATCH_SIM_URL=http://localhost:3000 uv run --frozen --no-sync python tools/smoke_test.py
+
+      - name: patch-sim logs
+        if: always()
+        run: cat "$RUNNER_TEMP/patch-sim.log" || true
+
+  publish-testpypi:
+    needs: [smoke-core, smoke-ui]
+    if: startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    environment:
+      name: testpypi
+      url: https://test.pypi.org/p/patch-sim
+    permissions:
+      id-token: write
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          name: dist
+          path: dist/
+
+      - name: Publish to TestPyPI
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          repository-url: https://test.pypi.org/legacy/
+          skip-existing: true
+
+  publish-pypi:
+    needs: publish-testpypi
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    environment:
+      name: pypi
+      url: https://pypi.org/p/patch-sim
+    permissions:
+      id-token: write
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          name: dist
+          path: dist/
+
+      - name: Publish to PyPI
+        uses: pypa/gh-action-pypi-publish@release/v1
