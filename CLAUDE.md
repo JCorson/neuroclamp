@@ -56,6 +56,8 @@ Issue links **are** appropriate when documenting an open limitation that has not
 
 Keep these layers cleanly separated: do not import Reflex types into `patch_sim/`, and do not import `patch_sim_ui` modules from `patch_sim/`.
 
+Any file the library or the UI reads at runtime must live inside its package (`patch_sim/` or `patch_sim_ui/`) and be located relative to `__file__`. Paths that reach up to the repository root work in a checkout but break the installed wheel.
+
 ## UI framework
 
 The UI uses **Reflex** (v0.8+), a Python framework that compiles to Next.js.

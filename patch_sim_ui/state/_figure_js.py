@@ -1,6 +1,6 @@
 """Pure Plotly-JS asset loaders + token substituters for SimulationState.
 
-The JS modules under ``assets/`` are loaded once at import and have a small
+The JS modules under ``patch_sim_ui/js/`` are loaded once at import and have a small
 set of placeholder tokens (``/*API_URL*/``, ``/*TOKEN*/``, etc.) that get
 substituted per call.  Loading + substitution is pure string work; pulling
 it out of :class:`SimulationState` lets the state class focus on
@@ -13,20 +13,23 @@ import pathlib
 
 from patch_sim_ui import constants
 
-_ASSETS_DIR = pathlib.Path(__file__).parents[2] / "assets"
+#: Package-relative directory holding the JS templates.  The templates ship as
+#: package data, so they resolve the same way from a source checkout and from
+#: an installed wheel.
+_JS_DIR = pathlib.Path(__file__).parents[1] / "js"
 
 #: Client-side sweep highlight / selection module.  Injected via
 #: ``rx.call_script()`` after every figure render in multi-sweep mode.
 #: Placeholder tokens (``/*DIM_OPACITY*/``, ``/*HOVER_WIDTH*/``,
 #: ``/*DIM_WIDTH*/``, ``/*SELECTED_SWEEP*/``) are substituted at call time
 #: in :func:`_render_sweep_highlight_js`.
-_SWEEP_HIGHLIGHT_JS: str = (_ASSETS_DIR / "sweep_highlight.js").read_text()
+_SWEEP_HIGHLIGHT_JS: str = (_JS_DIR / "sweep_highlight.js").read_text()
 
 #: Client-side fetch-and-swap for side-channel figure delivery.  Placeholder
 #: tokens (``/*API_URL*/``, ``/*TOKEN*/``, ``/*DARK_AXIS_STYLE*/``,
 #: ``/*POST_JS*/``) are substituted per call in
 #: :func:`_render_fetch_figure_js`.
-_FETCH_FIGURE_JS: str = (_ASSETS_DIR / "fetch_figure.js").read_text()
+_FETCH_FIGURE_JS: str = (_JS_DIR / "fetch_figure.js").read_text()
 
 
 def _render_sweep_highlight_js(selected_sweep: int) -> str:
