@@ -71,7 +71,9 @@ The app serves on `http://localhost:3000`.
 
 The root `Dockerfile` builds a production image from an allowlist
 `.dockerignore`: any new top-level file or directory the app reads at runtime
-must be added to that allowlist, or the image will not include it.
+must be added to that allowlist, or the image will not include it. The
+`Docker` CI workflow builds the image and runs `tools/smoke_test.py` (a
+Playwright check that a simulation runs and Export CSV works) against it.
 
 ## Package manager
 

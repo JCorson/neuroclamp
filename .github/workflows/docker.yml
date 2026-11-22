@@ -15,7 +15,7 @@ on:
       - patch_sim/**
       - patch_sim_ui/**
       - assets/**
-      - tools/capture_screenshots.py
+      - tools/smoke_test.py
       - .github/workflows/docker.yml
   pull_request:
     branches: [main]
@@ -74,15 +74,7 @@ jobs:
         run: |
           uv sync --frozen --no-dev --group=screenshots
           uv run --frozen --no-sync playwright install --with-deps chromium
-          PATCH_SIM_URL=http://localhost:3000 uv run --frozen --no-sync python tools/capture_screenshots.py
-
-      - name: Upload browser screenshots
-        if: failure()
-        uses: actions/upload-artifact@v7
-        with:
-          name: smoke-test-screenshots
-          path: assets/screenshots/
-          if-no-files-found: ignore
+          PATCH_SIM_URL=http://localhost:3000 uv run --frozen --no-sync python tools/smoke_test.py
 
       - name: Container logs
         if: always()
