@@ -37,6 +37,9 @@ ui = [
     "reflex[pydantic]>=0.11.0",
 ]
 
+[project.scripts]
+patch-sim = "patch_sim_ui.cli:main"
+
 [project.urls]
 Homepage = "https://github.com/JCorson/patch-sim"
 Documentation = "https://jcorson.github.io/patch-sim/"

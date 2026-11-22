@@ -11,8 +11,9 @@ is published as a static site; the help page links out to it.
 
 Help content lives inside the package, so it resolves relative to this module
 regardless of the working directory. Screenshots referenced by the prose are
-served by Reflex from the repository-root ``assets/screenshots/`` directory at
-``/screenshots/...``.
+served by Reflex at ``/screenshots/...`` from ``assets/screenshots/`` in its
+working directory: the repository root in a source checkout, or the directory
+``patch-sim ui`` prepares from the copy packaged in the wheel.
 """
 
 import pathlib

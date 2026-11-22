@@ -33,15 +33,41 @@ Key features:
 - Continuous simulation mode for oscilloscope-like real-time recording
 - 6 built-in presets: Action Potential, Subthreshold Response, Repetitive Firing, I-V Curve, Na+ Channel Activation, Frequency Response
 
-### Installing the UI
+### Installing from PyPI
+
+```
+pip install patch-sim           # core library only
+pip install "patch-sim[ui]"     # library plus the web UI
+```
+
+Start the web UI from any directory:
+
+```
+patch-sim ui
+```
+
+The app opens in your browser at `http://localhost:3000` once it is ready.
+`python -m patch_sim_ui ui` is equivalent. Options:
+
+- `--port PORT`: serve on a different port (default 3000).
+- `--host HOST`: interface to bind to (default `127.0.0.1`, this computer only).
+  If you bind to `0.0.0.0` and open the app from another machine, also set
+  `REFLEX_API_URL` to the URL the browser uses, for example
+  `REFLEX_API_URL=http://myhost:3000`.
+- `--no-browser`: do not open a browser.
+- `--workdir PATH`: where the generated config and frontend build are kept
+  (default: `$PATCH_SIM_WORKDIR`, else a per-user cache directory such as
+  `~/.cache/patch-sim/<version>/` on Linux).
+- `--reset`: delete the working directory first and rebuild the frontend.
+
+The first launch downloads a JavaScript runtime and builds the web frontend.
+This takes a few minutes and needs internet access; later launches reuse the
+build. On minimal Linux systems the download needs `curl` and `unzip`.
+
+### Running from a source checkout
 
 ```
 uv sync --frozen --extra=ui
-```
-
-### Running the UI
-
-```
 uv run reflex run
 ```
 

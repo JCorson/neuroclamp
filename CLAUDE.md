@@ -71,6 +71,15 @@ uv run reflex run
 
 The app serves on `http://localhost:3000`.
 
+The UI dependencies are the `ui` optional extra, not a dependency group,
+because the package is published to PyPI as `patch-sim` (built with hatchling).
+Installed users start the app with `patch-sim ui` (`patch_sim_ui/cli.py`), which
+runs Reflex in a per-user working directory prepared by
+`patch_sim_ui/launcher.py`. The Reflex config lives in
+`patch_sim_ui/_rxconfig.py`; the root `rxconfig.py` re-exports it for
+development and is not packaged. `hatch_build.py` copies `assets/screenshots/`
+into standard wheels, and `tools/check_dist.py` verifies the built artifacts.
+
 The root `Dockerfile` builds a production image from an allowlist
 `.dockerignore`: any new top-level file or directory the app reads at runtime
 must be added to that allowlist, or the image will not include it. The

@@ -12,6 +12,14 @@ listed under **Changed** or **Removed**.
 
 ## [Unreleased]
 
+### Added
+
+- patch-sim installs from PyPI: `pip install patch-sim` for the library, or
+  `pip install "patch-sim[ui]"` for the library and the web app.
+- The `patch-sim ui` command starts the web app from any directory, with
+  `--port`, `--host`, `--no-browser`, `--workdir` and `--reset` options. It
+  opens the app in your browser once the server is ready.
+
 ## [0.1.0] - Unreleased
 
 The first release of patch-sim, a patch-clamp experiment simulator built on
