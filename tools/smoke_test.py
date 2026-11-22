@@ -10,7 +10,7 @@ CI runs this against the Docker image; it works against any running app.
 
 Usage:
     1. Start the app, e.g. ``docker run --rm -p 3000:3000 patch-sim``.
-    2. ``uv run --frozen --group screenshots python tools/smoke_test.py``
+    2. ``uv run --frozen --group browser python tools/smoke_test.py``
 
 The target URL defaults to ``http://localhost:3000`` and can be overridden with
 the ``PATCH_SIM_URL`` environment variable. Exits non-zero on the first failed

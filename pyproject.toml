@@ -65,6 +65,9 @@ filterwarnings = [
 ]
 
 [dependency-groups]
+browser = [
+    "playwright>=1.49.0",
+]
 dev = [
     "httpx2>=2.16.0",
     "pytest>=9.1.1",
@@ -76,9 +79,6 @@ docs = [
     "mkdocs>=1.6.1",
     "mkdocs-material>=9.6.0",
     "mkdocstrings[python]>=0.27.0",
-]
-screenshots = [
-    "playwright>=1.49.0",
 ]
 ui = [
     "plotly>=6.9.0",

@@ -72,7 +72,7 @@ jobs:
 
       - name: Run a simulation end to end in a browser
         run: |
-          uv sync --frozen --no-dev --group=screenshots
+          uv sync --frozen --no-dev --group=browser
           uv run --frozen --no-sync playwright install --with-deps chromium
           PATCH_SIM_URL=http://localhost:3000 uv run --frozen --no-sync python tools/smoke_test.py
 
