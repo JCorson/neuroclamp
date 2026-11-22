@@ -47,7 +47,7 @@ The project uses [uv](https://docs.astral.sh/uv/) for dependency management.
 uv sync --frozen
 
 # Core library plus the web UI
-uv sync --frozen --group=ui
+uv sync --frozen --extra=ui
 ```
 
 ## Running the UI

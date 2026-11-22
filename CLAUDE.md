@@ -65,7 +65,7 @@ The UI uses **Reflex** (v0.8+), a Python framework that compiles to Next.js.
 Install UI dependencies and run the dev server:
 
 ```bash
-uv sync --frozen --group=ui
+uv sync --frozen --extra=ui
 uv run reflex run
 ```
 

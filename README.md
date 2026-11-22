@@ -36,7 +36,7 @@ Key features:
 ### Installing the UI
 
 ```
-uv sync --frozen --group=ui
+uv sync --frozen --extra=ui
 ```
 
 ### Running the UI
@@ -168,4 +168,4 @@ uvx ty check
 
 ## License
 
-This project is licensed under the [GNU General Public License v3.0 or later](LICENSE).
+This project is licensed under the [GNU General Public License v3.0 or later](https://github.com/JCorson/patch-sim/blob/main/LICENSE).
