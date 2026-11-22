@@ -128,8 +128,11 @@ def _export_csv(page: Page) -> None:
         raise SmokeTestError(f"export API returned HTTP {response.status}")
     # The download response's body is not exposed to the page, so fetch the
     # same token again (exports are not consumed on read).
-    rows = page.request.get(response.url).text().strip().splitlines()
-    if len(rows) < 2 or "," not in rows[0]:
+    # The export opens with ``# key: value`` metadata lines, then a header row
+    # starting with ``time_ms``, then one row per sample.
+    lines = page.request.get(response.url).text().strip().splitlines()
+    rows = [line for line in lines if not line.startswith("#")]
+    if len(rows) < 2 or not rows[0].startswith("time_ms,"):
         raise SmokeTestError(f"export is not a CSV with data rows: {rows[:2]!r}")
     print(f"ok: Export CSV returned {len(rows) - 1} data rows")
 
