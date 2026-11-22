@@ -1200,6 +1200,9 @@ dependencies = [
 ]
 
 [package.dev-dependencies]
+browser = [
+    { name = "playwright" },
+]
 dev = [
     { name = "httpx2" },
     { name = "pytest" },
@@ -1211,9 +1214,6 @@ docs = [
     { name = "mkdocs" },
     { name = "mkdocs-material" },
     { name = "mkdocstrings", extra = ["python"] },
-]
-screenshots = [
-    { name = "playwright" },
 ]
 ui = [
     { name = "plotly" },
@@ -1228,6 +1228,7 @@ requires-dist = [
 ]
 
 [package.metadata.requires-dev]
+browser = [{ name = "playwright", specifier = ">=1.49.0" }]
 dev = [
     { name = "httpx2", specifier = ">=2.16.0" },
     { name = "pytest", specifier = ">=9.1.1" },
@@ -1240,7 +1241,6 @@ docs = [
     { name = "mkdocs-material", specifier = ">=9.6.0" },
     { name = "mkdocstrings", extras = ["python"], specifier = ">=0.27.0" },
 ]
-screenshots = [{ name = "playwright", specifier = ">=1.49.0" }]
 ui = [
     { name = "plotly", specifier = ">=6.9.0" },
     { name = "reflex", extras = ["pydantic"], specifier = ">=0.10.1" },

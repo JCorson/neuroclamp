@@ -8,7 +8,7 @@ Usage:
     1. Start the app in production mode in one terminal:
        ``uv run reflex run --env prod``
     2. In another, run this script:
-       ``uv run --frozen --group screenshots python tools/capture_screenshots.py``
+       ``uv run --frozen --group browser python tools/capture_screenshots.py``
 
 Production mode is recommended: the dev server's hot-reloader can restart the
 backend worker mid-run and drop the in-flight simulation. The target URL
