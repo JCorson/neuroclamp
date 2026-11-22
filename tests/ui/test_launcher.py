@@ -93,6 +93,31 @@ def test_prepare_workdir_keeps_frontend_build_unless_reset(tmp_path: Path) -> No
     assert (workdir / "rxconfig.py").is_file()
 
 
+def test_prepare_workdir_refuses_a_directory_it_did_not_create(
+    tmp_path: Path,
+) -> None:
+    """A non-empty directory without the marker is left untouched."""
+    project = tmp_path / "project"
+    (project / "assets").mkdir(parents=True)
+    (project / "assets" / "logo.png").write_bytes(b"png")
+    (project / "rxconfig.py").write_text("config = 'mine'\n")
+
+    for reset in (False, True):
+        with pytest.raises(launcher.LauncherError, match="not a patch-sim"):
+            launcher.prepare_workdir(project, None, reset=reset)
+
+    assert (project / "assets" / "logo.png").is_file()
+    assert (project / "rxconfig.py").read_text() == "config = 'mine'\n"
+
+
+def test_prepare_workdir_accepts_an_existing_empty_directory(tmp_path: Path) -> None:
+    """An empty directory is adopted and marked as a working directory."""
+    launcher.prepare_workdir(tmp_path, None)
+
+    assert (tmp_path / launcher.WORKDIR_MARKER).is_file()
+    assert (tmp_path / "rxconfig.py").is_file()
+
+
 def test_prepare_workdir_reports_unwritable_location(tmp_path: Path) -> None:
     """A working directory that cannot be created raises a readable error."""
     blocker = tmp_path / "a-file"
@@ -137,14 +162,19 @@ def test_default_workdir_is_keyed_by_version() -> None:
 @pytest.mark.parametrize(
     ("host", "expected"),
     [
-        ("127.0.0.1", "http://127.0.0.1:3000"),
+        ("127.0.0.1", "http://localhost:3000"),
+        ("::1", "http://localhost:3000"),
         ("0.0.0.0", "http://localhost:3000"),
         ("::", "http://localhost:3000"),
-        ("::1", "http://[::1]:3000"),
+        ("192.168.1.5", "http://192.168.1.5:3000"),
+        ("fe80::1", "http://[fe80::1]:3000"),
     ],
 )
-def test_browser_url_maps_wildcard_hosts_to_localhost(host: str, expected: str) -> None:
-    """Wildcard bind addresses open as localhost in the browser.
+def test_browser_url_opens_local_hosts_as_localhost(host: str, expected: str) -> None:
+    """Loopback and wildcard hosts open as localhost, matching the API URL.
+
+    The figure and export requests go to ``http://localhost:<port>``, so a page
+    opened at ``127.0.0.1`` would make them cross-origin and they would fail.
 
     Args:
         host: Bind address passed to the launcher.
@@ -159,8 +189,14 @@ def test_port_in_use_detects_a_listening_socket() -> None:
         sock.bind(("127.0.0.1", 0))
         sock.listen()
         port = sock.getsockname()[1]
-        assert launcher.port_in_use("127.0.0.1", port)
-    assert not launcher.port_in_use("127.0.0.1", port)
+        assert launcher.port_in_use(port)
+    assert not launcher.port_in_use(port)
+
+
+def test_check_host_rejects_an_invalid_address() -> None:
+    """An unusable --host is reported as a host problem, not a busy port."""
+    with pytest.raises(launcher.LauncherError, match="--host"):
+        launcher.check_host("x" * 64 + ".example")
 
 
 def test_child_env_disables_telemetry_unless_the_user_sets_it() -> None:
@@ -172,3 +208,35 @@ def test_child_env_disables_telemetry_unless_the_user_sets_it() -> None:
 
     env = launcher.build_child_env({"REFLEX_TELEMETRY_ENABLED": "true"})
     assert env["REFLEX_TELEMETRY_ENABLED"] == "true"
+
+
+def test_browser_opens_once_the_server_answers(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The browser opens only after the health check succeeds."""
+    checks = iter([False, False, True])
+    monkeypatch.setattr(launcher, "_server_ready", lambda url: next(checks))
+    opened: list[str] = []
+    monkeypatch.setattr(launcher.webbrowser, "open", opened.append)
+
+    thread = launcher.open_browser_when_ready(
+        "http://localhost:3000", lambda: True, poll_interval=0.0
+    )
+    thread.join(timeout=5)
+
+    assert opened == ["http://localhost:3000"]
+
+
+def test_browser_wait_stops_when_the_server_exits(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """No browser opens if the server process exits before it is ready."""
+    monkeypatch.setattr(launcher, "_server_ready", lambda url: False)
+    opened: list[str] = []
+    monkeypatch.setattr(launcher.webbrowser, "open", opened.append)
+
+    thread = launcher.open_browser_when_ready(
+        "http://localhost:3000", lambda: False, poll_interval=0.0
+    )
+    thread.join(timeout=5)
+
+    assert not thread.is_alive()
+    assert opened == []

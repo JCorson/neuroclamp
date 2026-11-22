@@ -10,6 +10,9 @@ per-user directory that holds:
   with other Reflex apps in the same environment.
 - ``assets/screenshots/``: the help-page screenshots, copied from the package.
 - ``.web/``: the frontend build, created by Reflex on first run.
+- ``.patch-sim-workdir``: a marker identifying the directory as the
+  launcher's. The launcher refuses to write into, or delete, a non-empty
+  directory without it, so a mistyped ``--workdir`` cannot clobber user files.
 
 The directory is keyed by package version, so an upgrade starts from a clean
 frontend build. Reflex itself is not imported here; it runs in a child
@@ -17,8 +20,10 @@ process, and the helpers that need ``platformdirs`` import it lazily so that
 this module loads without the ``ui`` extra.
 """
 
+import http.client
 import os
 import shutil
+import signal
 import socket
 import subprocess
 import sys
@@ -45,11 +50,21 @@ CHILD_ENV_DEFAULTS: dict[str, str] = {
     "REFLEX_CHECK_LATEST_VERSION": "false",
 }
 
+#: File that marks a directory as a launcher working directory.
+WORKDIR_MARKER = ".patch-sim-workdir"
+
+#: Seconds to wait for the server to shut down before killing it.
+SHUTDOWN_GRACE_SECONDS = 30.0
+
 _PACKAGE_DIR = Path(__file__).resolve().parent
 
 
 class LauncherError(Exception):
     """A problem that stops the launcher, reported to the user without a traceback."""
+
+
+class _Terminated(Exception):
+    """Raised in the main thread when the launcher receives SIGTERM."""
 
 
 def default_workdir(version: str) -> Path:
@@ -107,12 +122,23 @@ def prepare_workdir(
         The prepared working directory.
 
     Raises:
-        LauncherError: If the directory cannot be created or written.
+        LauncherError: If the directory cannot be created or written, or if it
+            is a non-empty directory the launcher did not create.
     """
     try:
+        if (
+            workdir.is_dir()
+            and any(workdir.iterdir())
+            and not (workdir / WORKDIR_MARKER).is_file()
+        ):
+            raise LauncherError(
+                f"{workdir} is not empty and is not a patch-sim working "
+                "directory. Choose a new or empty directory with --workdir."
+            )
         if reset and workdir.exists():
             shutil.rmtree(workdir)
         workdir.mkdir(parents=True, exist_ok=True)
+        (workdir / WORKDIR_MARKER).touch()
 
         rxconfig = workdir / "rxconfig.py"
         if not rxconfig.is_file() or rxconfig.read_text() != RXCONFIG_STUB:
@@ -132,41 +158,82 @@ def prepare_workdir(
     return workdir
 
 
-def port_in_use(host: str, port: int) -> bool:
-    """Report whether a TCP port is already bound on a host.
+def _can_bind(family: socket.AddressFamily, port: int) -> bool:
+    """Report whether a TCP socket can bind the wildcard address on a port.
 
     Args:
-        host: Interface address the server will bind to.
+        family: Address family to test.
+        port: TCP port to bind; 0 picks any free port.
+
+    Returns:
+        ``True`` if the bind succeeds.
+    """
+    try:
+        with socket.socket(family, socket.SOCK_STREAM) as sock:
+            if sys.platform != "win32":
+                # Ignore sockets left in TIME_WAIT by a server that just
+                # stopped. On Windows this option would allow binding a port
+                # in active use.
+                sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+            sock.bind(("", port))
+    except OSError:
+        return False
+    return True
+
+
+def port_in_use(port: int) -> bool:
+    """Report whether a TCP port is taken, using the same test as Reflex.
+
+    Reflex refuses to start if it cannot bind the port on the wildcard address
+    of every usable address family (IPv4 and, where available, IPv6),
+    whichever host it will serve on. Mirroring that test here reports a
+    conflict before the first-run frontend build rather than minutes after.
+
+    Args:
         port: TCP port the server will listen on.
 
     Returns:
-        ``True`` if binding the port fails, ``False`` if it is free.
+        ``True`` if any usable address family cannot bind the port.
     """
-    family = socket.AF_INET6 if ":" in host else socket.AF_INET
-    with socket.socket(family, socket.SOCK_STREAM) as sock:
-        if sys.platform != "win32":
-            # Ignore sockets left in TIME_WAIT by a server that just stopped.
-            # On Windows this option would allow binding a port in active use.
-            sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-        try:
-            sock.bind((host, port))
-        except OSError:
-            return True
-    return False
+    families = [
+        family for family in (socket.AF_INET, socket.AF_INET6) if _can_bind(family, 0)
+    ]
+    return any(not _can_bind(family, port) for family in families)
+
+
+def check_host(host: str) -> None:
+    """Check that a bind host is a resolvable address.
+
+    Args:
+        host: Interface address the server will bind to.
+
+    Raises:
+        LauncherError: If the address cannot be resolved.
+    """
+    try:
+        socket.getaddrinfo(host, None)
+    except (socket.gaierror, UnicodeError) as exc:
+        raise LauncherError(f"Cannot use --host {host!r}: {exc}.") from exc
 
 
 def browser_url(host: str, port: int) -> str:
     """Return the URL a local browser should open for the server.
+
+    Reflex's API URL defaults to ``http://localhost:<port>``, and the figure
+    and CSV-export requests go to that absolute URL. A page opened at
+    ``127.0.0.1`` would make those requests cross-origin, which the production
+    server does not allow, so loopback and wildcard hosts open as
+    ``localhost``.
 
     Args:
         host: Interface address the server binds to.
         port: TCP port the server listens on.
 
     Returns:
-        The app URL. Wildcard hosts (``0.0.0.0``, ``::`` or empty) map to
-        ``localhost``.
+        The app URL. Loopback and wildcard hosts (``127.0.0.1``, ``::1``,
+        ``0.0.0.0``, ``::`` or empty) map to ``localhost``.
     """
-    if host in ("", "0.0.0.0", "::"):
+    if host in ("", "0.0.0.0", "::", "127.0.0.1", "::1"):
         host = "localhost"
     elif ":" in host:
         host = f"[{host}]"
@@ -226,8 +293,57 @@ def _server_ready(url: str) -> bool:
     try:
         with urllib.request.urlopen(f"{url}/ping", timeout=2) as response:
             return response.status == 200
-    except (urllib.error.URLError, OSError):
+    except (urllib.error.URLError, http.client.HTTPException, OSError):
         return False
+
+
+def _has_graphical_browser() -> bool:
+    """Report whether opening a browser would show a graphical window.
+
+    On Linux without a display (an SSH session or a container), ``webbrowser``
+    falls back to a console browser that would take over the terminal running
+    the server.
+
+    Returns:
+        ``False`` on Linux when neither ``DISPLAY`` nor ``WAYLAND_DISPLAY`` is
+        set; ``True`` otherwise.
+    """
+    if sys.platform.startswith("linux"):
+        return bool(os.environ.get("DISPLAY") or os.environ.get("WAYLAND_DISPLAY"))
+    return True
+
+
+def _on_sigterm(signum: int, frame: object) -> None:
+    """Turn SIGTERM into an exception so the server is shut down first.
+
+    Args:
+        signum: The received signal number.
+        frame: The interrupted stack frame.
+
+    Raises:
+        _Terminated: Always.
+    """
+    raise _Terminated
+
+
+def _stop_server(proc: subprocess.Popen, already_signaled: bool) -> None:
+    """Stop the server process, escalating to a kill if it does not exit.
+
+    Args:
+        proc: The Reflex server process.
+        already_signaled: ``True`` when the server already received the
+            interrupt (Ctrl+C reaches the whole process group), so it only
+            needs time to shut down; otherwise it is sent SIGTERM first.
+    """
+    if proc.poll() is not None:
+        return
+    try:
+        if not already_signaled:
+            proc.terminate()
+        proc.wait(timeout=SHUTDOWN_GRACE_SECONDS)
+    except (KeyboardInterrupt, subprocess.TimeoutExpired):
+        proc.kill()
+        proc.wait()
 
 
 def open_browser_when_ready(
@@ -283,14 +399,18 @@ def run_ui(
         reset: Delete ``workdir`` first, forcing a fresh frontend build.
 
     Returns:
-        The server's exit code, or 130 if interrupted with Ctrl+C.
+        The server's exit code, 130 if interrupted with Ctrl+C, or 143 if
+        stopped with SIGTERM. Either signal shuts the server down before the
+        launcher exits.
 
     Raises:
-        LauncherError: If the port is taken or ``workdir`` is not writable.
+        LauncherError: If the host is invalid, the port is taken, or
+            ``workdir`` cannot be used.
     """
-    if port_in_use(host, port):
+    check_host(host)
+    if port_in_use(port):
         raise LauncherError(
-            f"Port {port} on {host} is already in use. Choose another with --port."
+            f"Port {port} is already in use. Choose another with --port."
         )
 
     screenshots = find_screenshots_dir()
@@ -316,15 +436,23 @@ def run_ui(
         cwd=workdir,
         env=build_child_env(os.environ),
     )
-    if open_browser:
+    if open_browser and _has_graphical_browser():
         open_browser_when_ready(url, lambda: proc.poll() is None)
+
+    # Signal handlers can only be installed from the main thread.
+    in_main_thread = threading.current_thread() is threading.main_thread()
+    previous_handler = (
+        signal.signal(signal.SIGTERM, _on_sigterm) if in_main_thread else None
+    )
+    interrupted = False
     try:
         return proc.wait()
     except KeyboardInterrupt:
-        # Ctrl+C reaches the child too; wait for it to shut down cleanly.
-        try:
-            proc.wait(timeout=30)
-        except (KeyboardInterrupt, subprocess.TimeoutExpired):
-            proc.kill()
-            proc.wait()
+        interrupted = True
         return 130
+    except _Terminated:
+        return 143
+    finally:
+        _stop_server(proc, already_signaled=interrupted)
+        if previous_handler is not None:
+            signal.signal(signal.SIGTERM, previous_handler)

@@ -52,6 +52,28 @@ def _ui_extra_installed() -> bool:
     return all(importlib.util.find_spec(name) is not None for name in _UI_MODULES)
 
 
+def _port(value: str) -> int:
+    """Parse a TCP port number for argparse.
+
+    Args:
+        value: The command-line value.
+
+    Returns:
+        The port number.
+
+    Raises:
+        argparse.ArgumentTypeError: If the value is not an integer from 1 to
+            65535.
+    """
+    try:
+        port = int(value)
+    except ValueError:
+        port = 0
+    if not 1 <= port <= 65535:
+        raise argparse.ArgumentTypeError(f"{value!r} is not a port number (1-65535)")
+    return port
+
+
 def build_parser() -> argparse.ArgumentParser:
     """Build the argument parser for the ``patch-sim`` command.
 
@@ -76,7 +98,7 @@ def build_parser() -> argparse.ArgumentParser:
         ),
     )
     ui.add_argument(
-        "--port", type=int, default=3000, help="port to serve on (default: 3000)"
+        "--port", type=_port, default=3000, help="port to serve on (default: 3000)"
     )
     ui.add_argument(
         "--host",
@@ -137,6 +159,10 @@ def _run_ui(args: argparse.Namespace) -> int:
     except launcher.LauncherError as exc:
         print(f"Error: {exc}", file=sys.stderr)
         return 1
+    except KeyboardInterrupt:
+        # Ctrl+C while preparing the working directory, before the server
+        # starts; once it runs, the launcher handles Ctrl+C itself.
+        return 130
 
 
 def main(argv: Sequence[str] | None = None) -> int:

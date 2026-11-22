@@ -59,6 +59,8 @@ The app opens in your browser at `http://localhost:3000` once it is ready.
   (default: `$PATCH_SIM_WORKDIR`, else a per-user cache directory such as
   `~/.cache/patch-sim/<version>/` on Linux).
 - `--reset`: delete the working directory first and rebuild the frontend.
+  The launcher only writes to, or deletes, a directory it created (or an empty
+  one), so `--workdir` cannot overwrite an existing folder.
 
 The first launch downloads a JavaScript runtime and builds the web frontend.
 This takes a few minutes and needs internet access; later launches reuse the
