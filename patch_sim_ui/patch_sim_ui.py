@@ -184,7 +184,8 @@ def index() -> rx.Component:
 
 
 # The Radix theme is configured via ``rx.plugins.RadixThemesPlugin`` in
-# ``rxconfig.py``; ``App(theme=...)`` is deprecated and removed in Reflex 1.0.
+# ``patch_sim_ui/_rxconfig.py``; ``App(theme=...)`` is deprecated and removed in
+# Reflex 1.0.
 app = rx.App(api_transformer=[_traces_app, _exports_app])
 app.add_page(
     index,

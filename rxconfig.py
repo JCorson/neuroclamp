@@ -1,18 +1,11 @@
-"""Reflex configuration for the patch_sim web UI."""
+"""Reflex entry point for running the web UI from a source checkout.
 
-import reflex as rx
-from reflex.plugins.sitemap import SitemapPlugin
+``uv run reflex run`` reads this module from the repository root. It is not
+part of the distributed package: the configuration lives in
+``patch_sim_ui._rxconfig``, and ``patch-sim ui`` writes an equivalent stub into
+its own working directory.
+"""
 
-config = rx.Config(
-    app_name="patch_sim_ui",
-    disable_plugins=[SitemapPlugin],
-    plugins=[
-        rx.plugins.RadixThemesPlugin(
-            theme=rx.theme(
-                appearance="inherit",
-                accent_color="blue",
-                radius="medium",
-            ),
-        ),
-    ],
-)
+from patch_sim_ui._rxconfig import config
+
+__all__ = ["config"]
