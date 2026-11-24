@@ -1,8 +1,9 @@
 """Behavior tests for the ``patch-sim`` command line.
 
-The Reflex server is never started: ``subprocess.Popen`` is replaced with a
-fake process, so the tests check what the launcher would run, where, and how
-it shuts the server down.
+The Reflex server is never started: ``subprocess.Popen`` is replaced with an
+autospec mock, so every call the launcher makes is checked against the real
+``Popen`` signatures. The tests check what the launcher would run, where, and
+how it shuts the server down.
 """
 
 import os
@@ -13,94 +14,88 @@ import sys
 import threading
 from collections.abc import Callable
 from pathlib import Path
-from typing import Any
+from unittest import mock
 
 import pytest
 
 from patch_sim_ui import cli, launcher
 
 
-class _FakeServer:
-    """Stand-in for the Reflex child process.
+def _script_server(
+    proc: mock.NonCallableMagicMock,
+    *wait_effects: BaseException | Callable[[], None],
+    exit_code: int = 0,
+) -> None:
+    """Script how the mocked server process behaves.
 
-    Each launch is recorded in ``calls``. ``wait_effects`` scripts successive
-    ``wait()`` calls: an exception instance is raised, a callable is called,
-    and once the list is empty ``wait()`` returns ``exit_code``. While effects
-    remain the process reports itself as running.
+    Successive ``wait()`` calls apply ``wait_effects`` in order: an exception
+    is raised, a callable is called. Once they run out, ``wait()`` returns
+    ``exit_code``. The process reports itself as running (``poll()`` returns
+    ``None``) until ``wait()`` returns or ``kill()`` is called.
+
+    Args:
+        proc: The mocked ``Popen`` instance.
+        *wait_effects: Effects of successive ``wait()`` calls.
+        exit_code: Exit code of the process.
     """
+    pending = list(wait_effects)
+    running = [bool(pending)]
 
-    pid = 4242
-    calls: list[dict[str, Any]] = []
-    instances: list["_FakeServer"] = []
-    exit_code = 0
-    wait_effects: list[BaseException | Callable[[], None]] = []
-
-    def __init__(self, cmd: list[str], cwd: Path, env: dict[str, str]) -> None:
-        """Record the launch arguments.
-
-        Args:
-            cmd: Command the launcher would run.
-            cwd: Working directory for the command.
-            env: Environment for the command.
-        """
-        _FakeServer.calls.append({"cmd": cmd, "cwd": Path(cwd), "env": env})
-        _FakeServer.instances.append(self)
-        self.alive = bool(_FakeServer.wait_effects)
-        self.signals: list[str] = []
-
-    def poll(self) -> int | None:
-        """Report whether the process has exited.
+    def poll() -> int | None:
+        """Report the scripted exit status.
 
         Returns:
-            ``None`` while running, otherwise the configured exit code.
+            ``None`` while running, otherwise ``exit_code``.
         """
-        return None if self.alive else _FakeServer.exit_code
+        return None if running[0] else exit_code
 
-    def wait(self, timeout: float | None = None) -> int:
+    def wait(timeout: float | None = None) -> int:
         """Apply the next scripted effect, or exit.
 
         Args:
             timeout: Ignored.
 
         Returns:
-            The configured exit code.
+            ``exit_code``.
         """
-        if _FakeServer.wait_effects:
-            effect = _FakeServer.wait_effects.pop(0)
+        if pending:
+            effect = pending.pop(0)
             if isinstance(effect, BaseException):
                 raise effect
             effect()
-        self.alive = False
-        return _FakeServer.exit_code
+        running[0] = False
+        return exit_code
 
-    def terminate(self) -> None:
-        """Record a SIGTERM sent by the launcher."""
-        self.signals.append("terminate")
+    def kill() -> None:
+        """Mark the process exited."""
+        running[0] = False
 
-    def kill(self) -> None:
-        """Record a kill sent by the launcher and mark the process exited."""
-        self.signals.append("kill")
-        self.alive = False
+    proc.poll.side_effect = poll
+    proc.wait.side_effect = wait
+    proc.kill.side_effect = kill
 
 
 @pytest.fixture
-def fake_server(monkeypatch: pytest.MonkeyPatch) -> type[_FakeServer]:
-    """Replace the Reflex child process and the browser with fakes.
+def popen(monkeypatch: pytest.MonkeyPatch) -> mock.MagicMock:
+    """Replace the Reflex child process and the browser with mocks.
+
+    The server exits with code 0 as soon as the launcher waits on it; tests
+    change that with :func:`_script_server` on ``popen.return_value``.
 
     Args:
         monkeypatch: Pytest monkeypatch fixture.
 
     Returns:
-        The fake server class, whose ``calls`` list records each launch.
+        The autospec mock of ``subprocess.Popen``.
     """
-    _FakeServer.calls = []
-    _FakeServer.instances = []
-    _FakeServer.exit_code = 0
-    _FakeServer.wait_effects = []
-    monkeypatch.setattr(launcher.subprocess, "Popen", _FakeServer)
+    popen = mock.create_autospec(subprocess.Popen)
+    # ``pid`` is set by Popen.__init__, so it is not part of the class spec.
+    popen.return_value.pid = 4242
+    _script_server(popen.return_value)
+    monkeypatch.setattr(launcher.subprocess, "Popen", popen)
     monkeypatch.setattr(launcher.webbrowser, "open", _fail_browser_open)
     monkeypatch.delenv(cli.WORKDIR_ENV_VAR, raising=False)
-    return _FakeServer
+    return popen
 
 
 def _fail_browser_open(url: str) -> bool:
@@ -195,7 +190,7 @@ def test_ui_rejects_an_invalid_port(
 
 
 def test_ui_without_extra_prints_install_hint(
-    fake_server: type[_FakeServer],
+    popen: mock.MagicMock,
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
     tmp_path: Path,
@@ -208,11 +203,11 @@ def test_ui_without_extra_prints_install_hint(
     err = capsys.readouterr().err
     assert err.strip() == f"Error: {cli.UI_EXTRA_MESSAGE}"
     assert "Traceback" not in err
-    assert fake_server.calls == []
+    popen.assert_not_called()
 
 
 def test_ui_runs_reflex_in_production_mode_from_the_workdir(
-    fake_server: type[_FakeServer], tmp_path: Path
+    popen: mock.MagicMock, tmp_path: Path
 ) -> None:
     """The server runs single-port prod mode in the prepared working directory."""
     port = _free_port()
@@ -222,27 +217,26 @@ def test_ui_runs_reflex_in_production_mode_from_the_workdir(
     )
 
     assert code == 0
-    (call,) = fake_server.calls
-    assert call["cwd"] == tmp_path.resolve()
-    assert call["cmd"][1:4] == ["-m", "reflex", "run"]
-    cmd = " ".join(call["cmd"])
+    popen.assert_called_once()
+    (command,), kwargs = popen.call_args
+    assert kwargs["cwd"] == tmp_path.resolve()
+    assert command[1:4] == ["-m", "reflex", "run"]
+    cmd = " ".join(command)
     assert f"--env prod --single-port --frontend-port {port}" in cmd
     assert "--backend-host 127.0.0.1" in cmd
-    assert call["env"]["REFLEX_TELEMETRY_ENABLED"] == "false"
+    assert kwargs["env"]["REFLEX_TELEMETRY_ENABLED"] == "false"
     assert (tmp_path / "rxconfig.py").read_text() == launcher.RXCONFIG_STUB
 
 
-def test_ui_returns_the_server_exit_code(
-    fake_server: type[_FakeServer], tmp_path: Path
-) -> None:
+def test_ui_returns_the_server_exit_code(popen: mock.MagicMock, tmp_path: Path) -> None:
     """A failing server's exit code is passed through to the shell."""
-    fake_server.exit_code = 3
+    _script_server(popen.return_value, exit_code=3)
 
     assert _run_ui(tmp_path) == 3
 
 
 def test_ui_announces_the_frontend_build_only_when_needed(
-    fake_server: type[_FakeServer],
+    popen: mock.MagicMock,
     capsys: pytest.CaptureFixture[str],
     tmp_path: Path,
 ) -> None:
@@ -259,14 +253,14 @@ def test_ui_announces_the_frontend_build_only_when_needed(
 
 
 def test_ui_verbose_shows_the_server_command(
-    fake_server: type[_FakeServer],
+    popen: mock.MagicMock,
     capsys: pytest.CaptureFixture[str],
     tmp_path: Path,
 ) -> None:
     """``--verbose`` adds the exact Reflex command; the default output omits it.
 
     Args:
-        fake_server: The fake Reflex process.
+        popen: The mocked ``subprocess.Popen``.
         capsys: Pytest output-capture fixture.
         tmp_path: Pytest temporary directory.
     """
@@ -282,7 +276,7 @@ def test_ui_verbose_shows_the_server_command(
 
 
 def test_ui_reads_workdir_from_environment(
-    fake_server: type[_FakeServer],
+    popen: mock.MagicMock,
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
@@ -291,11 +285,11 @@ def test_ui_reads_workdir_from_environment(
 
     cli.main(["ui", "--no-browser", "--port", str(_free_port())])
 
-    assert fake_server.calls[0]["cwd"] == tmp_path.resolve()
+    assert popen.call_args.kwargs["cwd"] == tmp_path.resolve()
 
 
 def test_ui_refuses_a_port_in_use(
-    fake_server: type[_FakeServer],
+    popen: mock.MagicMock,
     capsys: pytest.CaptureFixture[str],
     tmp_path: Path,
 ) -> None:
@@ -312,11 +306,11 @@ def test_ui_refuses_a_port_in_use(
     assert f"Port {port}" in err
     assert "--port" in err
     assert "Traceback" not in err
-    assert fake_server.calls == []
+    popen.assert_not_called()
 
 
 def test_ui_reports_an_unwritable_workdir(
-    fake_server: type[_FakeServer],
+    popen: mock.MagicMock,
     capsys: pytest.CaptureFixture[str],
     tmp_path: Path,
 ) -> None:
@@ -326,11 +320,11 @@ def test_ui_reports_an_unwritable_workdir(
 
     assert _run_ui(blocker / "work") == 1
     assert "Cannot prepare the working directory" in capsys.readouterr().err
-    assert fake_server.calls == []
+    popen.assert_not_called()
 
 
 def test_ui_refuses_to_reset_a_directory_it_did_not_create(
-    fake_server: type[_FakeServer],
+    popen: mock.MagicMock,
     capsys: pytest.CaptureFixture[str],
     tmp_path: Path,
 ) -> None:
@@ -342,56 +336,58 @@ def test_ui_refuses_to_reset_a_directory_it_did_not_create(
 
     assert keep.read_text() == "important"
     assert "not a patch-sim working directory" in capsys.readouterr().err
-    assert fake_server.calls == []
+    popen.assert_not_called()
 
 
 def test_ui_ctrl_c_waits_for_the_server_and_returns_130(
-    fake_server: type[_FakeServer], tmp_path: Path
+    popen: mock.MagicMock, tmp_path: Path
 ) -> None:
     """Ctrl+C lets the already-interrupted server exit without re-signaling it."""
-    fake_server.wait_effects = [KeyboardInterrupt()]
+    server = popen.return_value
+    _script_server(server, KeyboardInterrupt())
 
     assert _run_ui(tmp_path) == 130
 
-    (server,) = fake_server.instances
     assert server.poll() is not None
-    assert server.signals == []
+    server.terminate.assert_not_called()
+    server.kill.assert_not_called()
 
 
 def test_ui_kills_a_server_that_ignores_ctrl_c(
-    fake_server: type[_FakeServer], tmp_path: Path
+    popen: mock.MagicMock, tmp_path: Path
 ) -> None:
     """A server still running after the grace period is killed."""
-    fake_server.wait_effects = [
+    server = popen.return_value
+    _script_server(
+        server,
         KeyboardInterrupt(),
         subprocess.TimeoutExpired("reflex", launcher.SHUTDOWN_GRACE_SECONDS),
-    ]
+    )
 
     assert _run_ui(tmp_path) == 130
 
-    (server,) = fake_server.instances
-    assert server.signals == ["kill"]
+    server.terminate.assert_not_called()
+    server.kill.assert_called_once_with()
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="POSIX signal delivery")
-def test_ui_sigterm_stops_the_server(
-    fake_server: type[_FakeServer], tmp_path: Path
-) -> None:
+def test_ui_sigterm_stops_the_server(popen: mock.MagicMock, tmp_path: Path) -> None:
     """SIGTERM to the launcher terminates the server instead of orphaning it."""
     if threading.current_thread() is not threading.main_thread():
         pytest.skip("signal handlers need the main thread")
     previous = signal.getsignal(signal.SIGTERM)
-    fake_server.wait_effects = [lambda: os.kill(os.getpid(), signal.SIGTERM)]
+    server = popen.return_value
+    _script_server(server, lambda: os.kill(os.getpid(), signal.SIGTERM))
 
     assert _run_ui(tmp_path) == 143
 
-    (server,) = fake_server.instances
-    assert server.signals == ["terminate"]
+    server.terminate.assert_called_once_with()
+    server.kill.assert_not_called()
     assert signal.getsignal(signal.SIGTERM) == previous
 
 
 def test_ui_skips_the_browser_without_a_display(
-    fake_server: type[_FakeServer],
+    popen: mock.MagicMock,
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
     tmp_path: Path,

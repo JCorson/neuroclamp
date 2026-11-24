@@ -1,7 +1,10 @@
 """Behavior tests for the ``patch-sim ui`` working-directory launcher."""
 
 import os
+import signal
 import socket
+import subprocess
+import sys
 from pathlib import Path
 
 import pytest
@@ -274,3 +277,68 @@ def _fail_open(url: str) -> bool:
         AssertionError: Always.
     """
     raise AssertionError(f"browser opened for {url}")
+
+
+def test_run_ui_runs_a_real_child_in_the_workdir(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """A real child process runs in the workdir and its exit code passes through.
+
+    Args:
+        monkeypatch: Pytest monkeypatch fixture.
+        tmp_path: Pytest temporary directory.
+    """
+    script = (
+        "import os, pathlib; pathlib.Path('cwd.txt').write_text(os.getcwd()); "
+        "raise SystemExit(7)"
+    )
+    monkeypatch.setattr(
+        launcher,
+        "build_reflex_command",
+        lambda host, port: [sys.executable, "-c", script],
+    )
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+        sock.bind(("127.0.0.1", 0))
+        port = sock.getsockname()[1]
+
+    code = launcher.run_ui(tmp_path, "127.0.0.1", port, open_browser=False)
+
+    assert code == 7
+    assert Path((tmp_path / "cwd.txt").read_text()) == tmp_path
+
+
+def test_stop_server_terminates_a_running_process() -> None:
+    """A server that was not already interrupted is asked to stop, and stops."""
+    proc = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(60)"])
+
+    launcher._stop_server(proc, already_signaled=False)
+
+    assert proc.returncode is not None
+    if sys.platform != "win32":
+        assert proc.returncode == -signal.SIGTERM
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="POSIX signal handling")
+def test_stop_server_kills_a_process_that_ignores_sigterm(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A server that ignores SIGTERM is killed after the grace period.
+
+    Args:
+        monkeypatch: Pytest monkeypatch fixture.
+    """
+    monkeypatch.setattr(launcher, "SHUTDOWN_GRACE_SECONDS", 0.5)
+    script = (
+        "import signal, time; signal.signal(signal.SIGTERM, signal.SIG_IGN); "
+        "print('ready', flush=True); time.sleep(60)"
+    )
+    proc = subprocess.Popen(
+        [sys.executable, "-c", script], stdout=subprocess.PIPE, text=True
+    )
+    assert proc.stdout is not None
+    assert proc.stdout.readline().strip() == "ready"
+
+    launcher._stop_server(proc, already_signaled=False)
+
+    assert proc.returncode == -signal.SIGKILL
+    proc.stdout.close()
