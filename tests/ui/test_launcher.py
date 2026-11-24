@@ -240,3 +240,37 @@ def test_browser_wait_stops_when_the_server_exits(
 
     assert not thread.is_alive()
     assert opened == []
+
+
+def test_browser_wait_warns_when_the_server_never_answers(
+    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    """A server that stays up but never answers gets a warning with the URL.
+
+    Args:
+        monkeypatch: Pytest monkeypatch fixture.
+        caplog: Pytest log-capture fixture.
+    """
+    monkeypatch.setattr(launcher, "_server_ready", lambda url: False)
+    monkeypatch.setattr(launcher.webbrowser, "open", _fail_open)
+
+    thread = launcher.open_browser_when_ready(
+        "http://localhost:3000", lambda: True, timeout=0.0
+    )
+    thread.join(timeout=5)
+
+    (record,) = caplog.records
+    assert record.levelname == "WARNING"
+    assert "http://localhost:3000" in record.getMessage()
+
+
+def _fail_open(url: str) -> bool:
+    """Fail the test if a browser is opened.
+
+    Args:
+        url: URL that would have been opened.
+
+    Raises:
+        AssertionError: Always.
+    """
+    raise AssertionError(f"browser opened for {url}")

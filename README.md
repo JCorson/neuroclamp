@@ -61,6 +61,8 @@ Options:
 - `--reset`: delete the working directory first and rebuild the frontend.
   The launcher only writes to, or deletes, a directory it created (or an empty
   one), so `--workdir` cannot overwrite an existing folder.
+- `-v`, `--verbose`: show detailed progress, including the command that runs
+  the server.
 
 The first launch downloads a JavaScript runtime and builds the web frontend.
 This takes a few minutes and needs internet access; later launches reuse the

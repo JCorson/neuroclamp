@@ -110,8 +110,8 @@ conductance-based (Hodgkin-Huxley) neuron models. It ships as a Python library
   `pip install "patch-sim[ui]"` for the library and the web app. The library
   ships type annotations (`py.typed`) for type checkers.
 - The `patch-sim ui` command starts the web app from any directory, with
-  `--port`, `--host`, `--no-browser`, `--workdir` and `--reset` options. It
-  opens the app in your browser once the server is ready.
+  `--port`, `--host`, `--no-browser`, `--workdir`, `--reset` and `--verbose`
+  options. It opens the app in your browser once the server is ready.
 
 #### Documentation
 

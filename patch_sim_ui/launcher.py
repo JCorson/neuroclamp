@@ -21,7 +21,9 @@ this module loads without the ``ui`` extra.
 """
 
 import http.client
+import logging
 import os
+import shlex
 import shutil
 import signal
 import socket
@@ -57,6 +59,8 @@ WORKDIR_MARKER = ".patch-sim-workdir"
 SHUTDOWN_GRACE_SECONDS = 30.0
 
 _PACKAGE_DIR = Path(__file__).resolve().parent
+
+logger = logging.getLogger(__name__)
 
 
 class LauncherError(Exception):
@@ -136,19 +140,24 @@ def prepare_workdir(
                 "directory. Choose a new or empty directory with --workdir."
             )
         if reset and workdir.exists():
+            logger.debug("Deleting %s for a fresh build", workdir)
             shutil.rmtree(workdir)
         workdir.mkdir(parents=True, exist_ok=True)
         (workdir / WORKDIR_MARKER).touch()
 
         rxconfig = workdir / "rxconfig.py"
         if not rxconfig.is_file() or rxconfig.read_text() != RXCONFIG_STUB:
+            logger.debug("Writing %s", rxconfig)
             rxconfig.write_text(RXCONFIG_STUB)
+        else:
+            logger.debug("%s is up to date", rxconfig)
 
         assets = workdir / "assets"
         if assets.exists():
             shutil.rmtree(assets)
         assets.mkdir()
         if screenshots is not None:
+            logger.debug("Copying screenshots from %s", screenshots)
             shutil.copytree(screenshots, assets / "screenshots")
     except OSError as exc:
         raise LauncherError(
@@ -198,7 +207,14 @@ def port_in_use(port: int) -> bool:
     families = [
         family for family in (socket.AF_INET, socket.AF_INET6) if _can_bind(family, 0)
     ]
-    return any(not _can_bind(family, port) for family in families)
+    busy = [family.name for family in families if not _can_bind(family, port)]
+    logger.debug(
+        "Port %d checked on %s; busy on %s",
+        port,
+        ", ".join(family.name for family in families),
+        ", ".join(busy) or "none",
+    )
+    return bool(busy)
 
 
 def check_host(host: str) -> None:
@@ -337,11 +353,14 @@ def _stop_server(proc: subprocess.Popen, already_signaled: bool) -> None:
     """
     if proc.poll() is not None:
         return
+    logger.info("Stopping the server...")
     try:
         if not already_signaled:
+            logger.debug("Sending SIGTERM to the server (pid %d)", proc.pid)
             proc.terminate()
         proc.wait(timeout=SHUTDOWN_GRACE_SECONDS)
     except (KeyboardInterrupt, subprocess.TimeoutExpired):
+        logger.warning("The server did not stop; killing it.")
         proc.kill()
         proc.wait()
 
@@ -370,12 +389,23 @@ def open_browser_when_ready(
 
     def _wait_and_open() -> None:
         """Poll the server and open the browser when it is ready."""
+        logger.debug("Waiting for %s/ping before opening the browser", url)
         deadline = time.monotonic() + timeout
         while proc_alive() and time.monotonic() < deadline:
             if _server_ready(url):
+                logger.debug("Server is ready; opening %s", url)
                 webbrowser.open(url)
                 return
             time.sleep(poll_interval)
+        if proc_alive():
+            logger.warning(
+                "The server did not respond within %.0f seconds; open %s "
+                "yourself once it is ready.",
+                timeout,
+                url,
+            )
+        else:
+            logger.debug("Server exited before it was ready; no browser opened")
 
     thread = threading.Thread(target=_wait_and_open, daemon=True)
     thread.start()
@@ -415,29 +445,28 @@ def run_ui(
 
     screenshots = find_screenshots_dir()
     if screenshots is None:
-        print(
-            "Warning: help-page screenshots not found; /help will show broken images.",
-            file=sys.stderr,
+        logger.warning(
+            "Help-page screenshots not found; /help will show broken images."
         )
     first_run = reset or not (workdir / ".web").is_dir()
     prepare_workdir(workdir, screenshots, reset=reset)
 
     url = browser_url(host, port)
     if first_run:
-        print(
+        logger.info(
             "First launch builds the web frontend. This can take a few minutes "
             "and needs internet access."
         )
-    print(f"Starting patch-sim at {url} (working directory: {workdir})")
-    print("Press Ctrl+C to stop.")
+    logger.info("Starting patch-sim at %s (working directory: %s)", url, workdir)
+    logger.info("Press Ctrl+C to stop.")
 
-    proc = subprocess.Popen(
-        build_reflex_command(host, port),
-        cwd=workdir,
-        env=build_child_env(os.environ),
-    )
+    command = build_reflex_command(host, port)
+    logger.debug("Running %s", shlex.join(command))
+    proc = subprocess.Popen(command, cwd=workdir, env=build_child_env(os.environ))
     if open_browser and _has_graphical_browser():
         open_browser_when_ready(url, lambda: proc.poll() is None)
+    elif open_browser:
+        logger.info("No display found; open %s in a browser.", url)
 
     # Signal handlers can only be installed from the main thread.
     in_main_thread = threading.current_thread() is threading.main_thread()
@@ -446,11 +475,14 @@ def run_ui(
     )
     interrupted = False
     try:
-        return proc.wait()
+        code = proc.wait()
+        logger.debug("Server exited with code %d", code)
+        return code
     except KeyboardInterrupt:
         interrupted = True
         return 130
     except _Terminated:
+        logger.debug("Received SIGTERM")
         return 143
     finally:
         _stop_server(proc, already_signaled=interrupted)

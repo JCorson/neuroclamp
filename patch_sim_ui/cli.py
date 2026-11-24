@@ -6,11 +6,17 @@ subcommands so other front ends can be added alongside ``ui`` later.
 This module uses only the standard library at import time, so ``patch-sim
 --help`` works, and the "install the ui extra" message prints cleanly, when
 only the core library is installed.
+
+Progress and errors are reported through :mod:`logging` on the
+``patch_sim_ui`` logger, which :func:`main` sends to stderr: plain messages at
+INFO, ``Warning:`` and ``Error:`` prefixes above it, and DEBUG detail with
+``--verbose``.
 """
 
 import argparse
 import importlib.metadata
 import importlib.util
+import logging
 import os
 import sys
 from collections.abc import Sequence
@@ -24,6 +30,56 @@ WORKDIR_ENV_VAR = "PATCH_SIM_WORKDIR"
 
 #: Modules the ``ui`` extra provides.
 _UI_MODULES: tuple[str, ...] = ("reflex", "plotly", "platformdirs")
+
+logger = logging.getLogger(__name__)
+
+
+class _ConsoleFormatter(logging.Formatter):
+    """Format log records as console messages.
+
+    INFO and DEBUG records print as the bare message; warnings and errors are
+    prefixed with their level, as in ``Error: Port 3000 is already in use``.
+    """
+
+    def format(self, record: logging.LogRecord) -> str:
+        """Format one record.
+
+        Args:
+            record: The log record.
+
+        Returns:
+            The message, prefixed with ``Warning:`` or ``Error:`` at those
+            levels.
+        """
+        message = super().format(record)
+        if record.levelno >= logging.ERROR:
+            return f"Error: {message}"
+        if record.levelno >= logging.WARNING:
+            return f"Warning: {message}"
+        return message
+
+
+class _ConsoleHandler(logging.StreamHandler):
+    """Stream handler that :func:`configure_logging` installs and replaces."""
+
+
+def configure_logging(verbose: bool = False) -> None:
+    """Send the ``patch_sim_ui`` loggers' messages to stderr.
+
+    Calling it again replaces the previous console handler, so running
+    :func:`main` more than once in a process does not duplicate output.
+
+    Args:
+        verbose: Include DEBUG messages.
+    """
+    package_logger = logging.getLogger("patch_sim_ui")
+    for handler in list(package_logger.handlers):
+        if isinstance(handler, _ConsoleHandler):
+            package_logger.removeHandler(handler)
+    handler = _ConsoleHandler(sys.stderr)
+    handler.setFormatter(_ConsoleFormatter("%(message)s"))
+    package_logger.addHandler(handler)
+    package_logger.setLevel(logging.DEBUG if verbose else logging.INFO)
 
 
 def _package_version() -> str:
@@ -125,6 +181,12 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="delete the working directory first and rebuild the frontend",
     )
+    ui.add_argument(
+        "-v",
+        "--verbose",
+        action="store_true",
+        help="show detailed progress, including the command that runs the server",
+    )
     return parser
 
 
@@ -138,7 +200,7 @@ def _run_ui(args: argparse.Namespace) -> int:
         The process exit code.
     """
     if not _ui_extra_installed():
-        print(UI_EXTRA_MESSAGE, file=sys.stderr)
+        logger.error(UI_EXTRA_MESSAGE)
         return 1
 
     from patch_sim_ui import launcher
@@ -158,7 +220,7 @@ def _run_ui(args: argparse.Namespace) -> int:
             reset=args.reset,
         )
     except launcher.LauncherError as exc:
-        print(f"Error: {exc}", file=sys.stderr)
+        logger.error("%s", exc)
         return 1
     except KeyboardInterrupt:
         # Ctrl+C while preparing the working directory, before the server
@@ -178,6 +240,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
     if args.command == "ui":
+        configure_logging(verbose=args.verbose)
         return _run_ui(args)
     parser.print_help(sys.stderr)
     return 2

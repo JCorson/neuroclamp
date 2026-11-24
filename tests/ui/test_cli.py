@@ -29,6 +29,7 @@ class _FakeServer:
     remain the process reports itself as running.
     """
 
+    pid = 4242
     calls: list[dict[str, Any]] = []
     instances: list["_FakeServer"] = []
     exit_code = 0
@@ -205,7 +206,7 @@ def test_ui_without_extra_prints_install_hint(
     assert cli.main(["ui", "--workdir", str(tmp_path)]) == 1
 
     err = capsys.readouterr().err
-    assert err.strip() == cli.UI_EXTRA_MESSAGE
+    assert err.strip() == f"Error: {cli.UI_EXTRA_MESSAGE}"
     assert "Traceback" not in err
     assert fake_server.calls == []
 
@@ -247,14 +248,37 @@ def test_ui_announces_the_frontend_build_only_when_needed(
 ) -> None:
     """The slow-first-launch notice appears without a build, or with --reset."""
     _run_ui(tmp_path)
-    assert "First launch builds the web frontend" in capsys.readouterr().out
+    assert "First launch builds the web frontend" in capsys.readouterr().err
 
     (tmp_path / ".web").mkdir()
     _run_ui(tmp_path)
-    assert "First launch" not in capsys.readouterr().out
+    assert "First launch" not in capsys.readouterr().err
 
     _run_ui(tmp_path, "--reset")
-    assert "First launch" in capsys.readouterr().out
+    assert "First launch" in capsys.readouterr().err
+
+
+def test_ui_verbose_shows_the_server_command(
+    fake_server: type[_FakeServer],
+    capsys: pytest.CaptureFixture[str],
+    tmp_path: Path,
+) -> None:
+    """``--verbose`` adds the exact Reflex command; the default output omits it.
+
+    Args:
+        fake_server: The fake Reflex process.
+        capsys: Pytest output-capture fixture.
+        tmp_path: Pytest temporary directory.
+    """
+    _run_ui(tmp_path)
+    quiet = capsys.readouterr().err
+    assert "Starting patch-sim at http://localhost:" in quiet
+    assert "reflex run" not in quiet
+
+    _run_ui(tmp_path, "--verbose")
+    verbose = capsys.readouterr().err
+    assert "-m reflex run --env prod" in verbose
+    assert verbose.count("Starting patch-sim") == 1
 
 
 def test_ui_reads_workdir_from_environment(
@@ -369,6 +393,7 @@ def test_ui_sigterm_stops_the_server(
 def test_ui_skips_the_browser_without_a_display(
     fake_server: type[_FakeServer],
     monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
     tmp_path: Path,
 ) -> None:
     """On headless Linux, no console browser takes over the terminal."""
@@ -386,6 +411,7 @@ def test_ui_skips_the_browser_without_a_display(
 
     assert code == 0
     assert started == []
+    assert "No display found; open http://localhost:" in capsys.readouterr().err
 
 
 def test_python_dash_m_runs_the_same_command() -> None:
