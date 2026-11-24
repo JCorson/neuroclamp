@@ -47,7 +47,7 @@ patch-sim ui
 ```
 
 The app opens in your browser at `http://localhost:3000` once it is ready.
-`python -m patch_sim_ui ui` is equivalent. Options:
+Options:
 
 - `--port PORT`: serve on a different port (default 3000).
 - `--host HOST`: interface to bind to (default `127.0.0.1`, this computer only).
