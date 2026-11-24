@@ -10,16 +10,25 @@ mkdocs API reference) lives separately under the repository-root ``docs/`` and
 is published as a static site; the help page links out to it.
 
 Help content lives inside the package, so it resolves relative to this module
-regardless of the working directory. Screenshots referenced by the prose are
-served by Reflex at ``/screenshots/...`` from ``assets/screenshots/`` in its
-working directory: the repository root in a source checkout, or the directory
-``patch-sim ui`` prepares from the copy packaged in the wheel.
+regardless of the working directory. That includes the screenshots the prose
+embeds as ``/screenshots/<name>.png``: :func:`install_screenshots` copies them
+into ``assets/screenshots/`` in the directory Reflex runs from, which Reflex
+serves at ``/screenshots/``.
 """
 
+import filecmp
+import logging
 import pathlib
 import re
+import shutil
+import uuid
+
+logger = logging.getLogger(__name__)
 
 _DOCS_DIR = pathlib.Path(__file__).parent / "help_content"
+
+#: Help-page screenshots shipped with the package.
+SCREENSHOTS_DIR: pathlib.Path = _DOCS_DIR / "screenshots"
 
 #: URL of the deployed mkdocs API-reference site, linked from the help page.
 API_DOCS_URL: str = "https://jcorson.github.io/patch-sim/"
@@ -63,3 +72,44 @@ def _load(filename: str) -> str:
 
 #: Topic slug -> rendered Markdown body, loaded once at import.
 PROSE: dict[str, str] = {slug: _load(filename) for slug, _, filename in _TOPICS}
+
+
+def install_screenshots(assets_dir: pathlib.Path) -> None:
+    """Copy the help-page screenshots into a Reflex app's assets directory.
+
+    Reflex serves static files only from ``assets/`` in its working directory,
+    and that directory differs between a source checkout, the ``patch-sim ui``
+    working directory and the Docker image. Copying from the package at app
+    import covers all three from one source. ``rx.asset(shared=True)`` does the
+    same with symlinks, but creating a symlink on Windows requires Developer
+    Mode or administrator rights.
+
+    A file is written only when its contents differ, through a temporary file
+    renamed into place, so concurrent imports never read a partial file and an
+    unchanged screenshot is left alone for the dev server's file watcher.
+    Screenshots no longer in the package are removed. A failure to write is
+    logged rather than raised: the app still runs, with broken help images.
+
+    Args:
+        assets_dir: The app's ``assets`` directory, usually
+            ``Path.cwd() / "assets"``.
+    """
+    dest = assets_dir / "screenshots"
+    shipped = {path.name: path for path in SCREENSHOTS_DIR.glob("*.png")}
+    try:
+        dest.mkdir(parents=True, exist_ok=True)
+        for name, src in shipped.items():
+            target = dest / name
+            if target.is_file() and filecmp.cmp(src, target, shallow=False):
+                continue
+            staged = dest / f".{uuid.uuid4().hex}.tmp"
+            try:
+                shutil.copyfile(src, staged)
+                staged.replace(target)
+            finally:
+                staged.unlink(missing_ok=True)
+        for stale in dest.glob("*.png"):
+            if stale.name not in shipped:
+                stale.unlink(missing_ok=True)
+    except OSError as exc:
+        logger.warning("Could not copy the help screenshots into %s: %s", dest, exc)

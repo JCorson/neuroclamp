@@ -28,7 +28,7 @@ WHEEL_REQUIRED: dict[str, int] = {
     "patch_sim_ui/__init__.py": 1,
     "patch_sim_ui/help_content/*.md": 5,
     "patch_sim_ui/js/*.js": 2,
-    "patch_sim_ui/_web_assets/screenshots/*.png": 7,
+    "patch_sim_ui/help_content/screenshots/*.png": 7,
 }
 
 #: Top-level names that must not appear in either artifact.
@@ -120,7 +120,7 @@ def check_wheel(wheel: Path) -> list[str]:
 
 
 def check_sdist(sdist: Path) -> list[str]:
-    """Check that the sdist leaves out development-only files.
+    """Check that the sdist carries the sources and leaves out development files.
 
     Args:
         sdist: Path to the built ``.tar.gz`` file.
@@ -135,12 +135,12 @@ def check_sdist(sdist: Path) -> list[str]:
     relative = [Path(*m.parts[1:]) for m in members if len(m.parts) > 1]
     top_level = {path.parts[0] for path in relative}
     for name in FORBIDDEN_TOP_LEVEL:
-        if name in top_level and name != "assets":
+        if name in top_level:
             failures.append(f"sdist: forbidden top-level entry {name}")
-    if not any(path.match("assets/screenshots/*.png") for path in relative):
-        failures.append("sdist: missing assets/screenshots (needed to build the wheel)")
-    if Path("hatch_build.py") not in relative:
-        failures.append("sdist: missing hatch_build.py (needed to build the wheel)")
+    if not any(
+        path.match("patch_sim_ui/help_content/screenshots/*.png") for path in relative
+    ):
+        failures.append("sdist: missing the help-page screenshots")
     return failures
 
 

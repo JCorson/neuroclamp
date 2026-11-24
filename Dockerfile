@@ -40,7 +40,8 @@ RUN --mount=type=cache,target=/home/app/.cache/uv,uid=1000,gid=1000 \
 
 # The project itself is never installed (--no-install-project): the app imports
 # patch_sim and patch_sim_ui straight from /app, and Reflex reads the root
-# rxconfig.py and assets/ from the working directory.
+# rxconfig.py from the working directory. The app copies its static files into
+# /app/assets when it starts.
 COPY --chown=app:app . .
 
 # Install bun and the frontend packages and compile the frontend once, so the

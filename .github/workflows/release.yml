@@ -15,10 +15,8 @@ on:
     paths:
       - pyproject.toml
       - uv.lock
-      - hatch_build.py
       - patch_sim/**
       - patch_sim_ui/**
-      - assets/**
       - tools/check_dist.py
       - tools/smoke_test.py
       - .github/workflows/release.yml

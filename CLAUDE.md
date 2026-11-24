@@ -77,8 +77,8 @@ Installed users start the app with `patch-sim ui` (`patch_sim_ui/cli.py`), which
 runs Reflex in a per-user working directory prepared by
 `patch_sim_ui/launcher.py`. The Reflex config lives in
 `patch_sim_ui/_rxconfig.py`; the root `rxconfig.py` re-exports it for
-development and is not packaged. `hatch_build.py` copies `assets/screenshots/`
-into standard wheels, and `tools/check_dist.py` verifies the built artifacts.
+development and is not packaged. `tools/check_dist.py` verifies the built
+artifacts.
 
 The root `Dockerfile` builds a production image from an allowlist
 `.dockerignore`: any new top-level file or directory the app reads at runtime
@@ -101,7 +101,7 @@ Every function and method — public, private, and dunder — must have a Google
 There are two documentation tracks, plus the docstrings that feed the API reference. Evaluate and update whatever a change touches:
 
 - **Library documentation** — the mkdocs site, for developers using `patch_sim` in Python. Prose pages live in `docs/` (`index.md`, `presets.md`, `protocols-and-analysis.md`) and the API reference is auto-generated under `docs/api/`. Update the relevant prose page when library behavior or supported options change. Build it to catch broken references: `uv run --frozen --group=docs mkdocs build --strict`. Avoid bare `$` and keep to Markdown that renders under both mkdocs and GitHub.
-- **Application documentation** — the in-app `/help` route, a user guide for the web app. Pages live in `patch_sim_ui/help_content/*.md` and are rendered by `rx.markdown`; add a new topic to `_TOPICS` in `patch_sim_ui/docs_loader.py` when you add a page. Update these when the UI's controls, panels, or workflow change. Screenshots are served from `assets/screenshots/` and regenerated with `uv run --frozen --group browser python tools/capture_screenshots.py` (against a running `uv run reflex run --env prod` — production mode avoids the dev hot-reloader restarting the backend mid-capture); refresh them when the UI's appearance changes.
+- **Application documentation** — the in-app `/help` route, a user guide for the web app. Pages live in `patch_sim_ui/help_content/*.md` and are rendered by `rx.markdown`; add a new topic to `_TOPICS` in `patch_sim_ui/docs_loader.py` when you add a page. Update these when the UI's controls, panels, or workflow change. Screenshots live in `patch_sim_ui/help_content/screenshots/` (the app copies them into the generated `assets/screenshots/` at startup, which Reflex serves at `/screenshots/`) and are regenerated with `uv run --frozen --group browser python tools/capture_screenshots.py` (against a running `uv run reflex run --env prod` — production mode avoids the dev hot-reloader restarting the backend mid-capture); refresh them when the UI's appearance changes.
 - **Changelog** — `CHANGELOG.md` (Keep a Changelog format) is for users of the library and the app. Add an entry under `## [Unreleased]` for any change to what the library or the app does: a new feature, a change in behavior, a change to the public `patch_sim` API (always flag breaking changes), or a fix that changes simulation results. Describe what changed for the user, not how the code changed. Leave out refactors, tests, CI, tooling, and dependency bumps; the PR history covers those.
 - **Docstrings** — Google-style docstrings on public symbols feed the mkdocstrings API reference. When you add or change a public symbol in `patch_sim/`, update its docstring and add a `:::` entry under `docs/api/` if it is a new top-level export.
 

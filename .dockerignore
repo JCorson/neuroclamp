@@ -10,9 +10,7 @@
 !LICENSE
 !patch_sim/
 !patch_sim_ui/
-!assets/
 
 # Generated or cached content inside the allowed paths.
 **/__pycache__
 **/*.py[cod]
-assets/external

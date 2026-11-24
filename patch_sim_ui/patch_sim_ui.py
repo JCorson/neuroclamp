@@ -1,5 +1,7 @@
 """Main Reflex app entry point and page layout for the patch_sim web UI."""
 
+from pathlib import Path
+
 import reflex as rx
 
 from patch_sim_ui.api.exports import starlette_app as _exports_app
@@ -11,11 +13,15 @@ from patch_sim_ui.components.neuron_panel import neuron_panel
 from patch_sim_ui.components.protocol_panel import protocol_panel
 from patch_sim_ui.components.sweep_manager import sweep_manager
 from patch_sim_ui.components.trace_display import trace_display
+from patch_sim_ui.docs_loader import install_screenshots
 from patch_sim_ui.log_handler import setup_logging
 from patch_sim_ui.state import SimulationState
 from patch_sim_ui.state.protocol import ProtocolState
 
 setup_logging()
+# Reflex compiles the app before copying assets/ into the frontend build, so
+# screenshots copied here are served at /screenshots/ in every run mode.
+install_screenshots(Path.cwd() / "assets")
 
 
 def _header() -> rx.Component:

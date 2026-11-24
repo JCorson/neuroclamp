@@ -8,7 +8,8 @@ per-user directory that holds:
 - ``rxconfig.py``: a stub that re-exports ``patch_sim_ui._rxconfig.config``.
   No top-level ``rxconfig`` module is installed, so the app does not collide
   with other Reflex apps in the same environment.
-- ``assets/screenshots/``: the help-page screenshots, copied from the package.
+- ``assets/``: static files, which the app copies in from the package when it
+  starts (see :func:`patch_sim_ui.docs_loader.install_screenshots`).
 - ``.web/``: the frontend build, created by Reflex on first run.
 - ``.patch-sim-workdir``: a marker identifying the directory as the
   launcher's. The launcher refuses to write into, or delete, a non-empty
@@ -58,8 +59,6 @@ WORKDIR_MARKER = ".patch-sim-workdir"
 #: Seconds to wait for the server to shut down before killing it.
 SHUTDOWN_GRACE_SECONDS = 30.0
 
-_PACKAGE_DIR = Path(__file__).resolve().parent
-
 logger = logging.getLogger(__name__)
 
 
@@ -86,39 +85,14 @@ def default_workdir(version: str) -> Path:
     return Path(platformdirs.user_cache_dir("patch-sim", appauthor=False)) / version
 
 
-def find_screenshots_dir() -> Path | None:
-    """Locate the help-page screenshots that ship with the UI.
-
-    A built wheel carries them at ``patch_sim_ui/_web_assets/screenshots``. An
-    editable install or a source checkout reads them from the repository-root
-    ``assets/screenshots``.
-
-    Returns:
-        The screenshots directory, or ``None`` if neither location exists.
-    """
-    for candidate in (
-        _PACKAGE_DIR / "_web_assets" / "screenshots",
-        _PACKAGE_DIR.parent / "assets" / "screenshots",
-    ):
-        if candidate.is_dir():
-            return candidate
-    return None
-
-
-def prepare_workdir(
-    workdir: Path, screenshots: Path | None, reset: bool = False
-) -> Path:
+def prepare_workdir(workdir: Path, reset: bool = False) -> Path:
     """Create or refresh the directory Reflex runs in.
 
-    ``rxconfig.py`` is rewritten only when its content differs, and
-    ``assets/`` is replaced on every call so files removed from the package do
-    not linger. The ``.web/`` frontend build is kept between runs unless
-    ``reset`` is set.
+    ``rxconfig.py`` is rewritten only when its content differs. The ``.web/``
+    frontend build is kept between runs unless ``reset`` is set.
 
     Args:
         workdir: Directory to prepare; created if missing.
-        screenshots: Directory of help-page screenshots to copy into
-            ``assets/screenshots``, or ``None`` to skip them.
         reset: Delete the whole directory first, forcing a fresh frontend
             build.
 
@@ -151,14 +125,6 @@ def prepare_workdir(
             rxconfig.write_text(RXCONFIG_STUB)
         else:
             logger.debug("%s is up to date", rxconfig)
-
-        assets = workdir / "assets"
-        if assets.exists():
-            shutil.rmtree(assets)
-        assets.mkdir()
-        if screenshots is not None:
-            logger.debug("Copying screenshots from %s", screenshots)
-            shutil.copytree(screenshots, assets / "screenshots")
     except OSError as exc:
         raise LauncherError(
             f"Cannot prepare the working directory {workdir}: {exc}. "
@@ -443,13 +409,8 @@ def run_ui(
             f"Port {port} is already in use. Choose another with --port."
         )
 
-    screenshots = find_screenshots_dir()
-    if screenshots is None:
-        logger.warning(
-            "Help-page screenshots not found; /help will show broken images."
-        )
     first_run = reset or not (workdir / ".web").is_dir()
-    prepare_workdir(workdir, screenshots, reset=reset)
+    prepare_workdir(workdir, reset=reset)
 
     url = browser_url(host, port)
     if first_run:

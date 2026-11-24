@@ -1,8 +1,10 @@
 """Capture application-documentation screenshots of the running web UI.
 
 Drives the live Reflex app with a headless browser and writes PNGs into
-``assets/screenshots/`` (served by Reflex at ``/screenshots/...`` and embedded
-in the in-app ``/help`` pages).
+``patch_sim_ui/help_content/screenshots/``. The app copies them into
+``assets/screenshots/`` when it starts, and Reflex serves them at
+``/screenshots/...`` for the in-app ``/help`` pages. Restart the app to see
+new captures.
 
 Usage:
     1. Start the app in production mode in one terminal:
@@ -30,7 +32,12 @@ from playwright.sync_api import (
 )
 
 BASE_URL = os.environ.get("PATCH_SIM_URL", "http://localhost:3000")
-OUTPUT_DIR = pathlib.Path(__file__).resolve().parents[1] / "assets" / "screenshots"
+OUTPUT_DIR = (
+    pathlib.Path(__file__).resolve().parents[1]
+    / "patch_sim_ui"
+    / "help_content"
+    / "screenshots"
+)
 
 #: Element screenshots captured after a single-sweep action-potential run.
 _ELEMENTS: list[tuple[str, str]] = [

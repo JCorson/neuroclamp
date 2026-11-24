@@ -53,16 +53,10 @@ build-backend = "hatchling.build"
 [tool.hatch.build.targets.wheel]
 packages = ["patch_sim", "patch_sim_ui"]
 
-# hatch_build.py copies the repository-root help-page screenshots into the
-# standard wheel; editable installs read them from the checkout.
-[tool.hatch.build.targets.wheel.hooks.custom]
-
 [tool.hatch.build.targets.sdist]
 include = [
     "/patch_sim",
     "/patch_sim_ui",
-    "/assets/screenshots",
-    "/hatch_build.py",
     "/README.md",
     "/LICENSE",
     "/CHANGELOG.md",
