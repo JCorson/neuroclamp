@@ -65,12 +65,13 @@ def _port(value: str) -> int:
         argparse.ArgumentTypeError: If the value is not an integer from 1 to
             65535.
     """
+    message = f"{value!r} is not a port number (1-65535)"
     try:
         port = int(value)
     except ValueError:
-        port = 0
+        raise argparse.ArgumentTypeError(message) from None
     if not 1 <= port <= 65535:
-        raise argparse.ArgumentTypeError(f"{value!r} is not a port number (1-65535)")
+        raise argparse.ArgumentTypeError(message)
     return port
 
 
