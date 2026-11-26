@@ -13,7 +13,9 @@ Reports pass/fail counts and the largest fraction of the band used.
 
 from __future__ import annotations
 
+import sys
 from concurrent.futures import ProcessPoolExecutor
+from functools import partial
 from importlib.util import find_spec
 
 from backend import simulate_current_clamp
@@ -32,11 +34,12 @@ from tests.parity._golden import (
 HAVE_RUST = find_spec("neuroclamp_core") is not None
 
 
-def _check(run: GoldenRun) -> dict[str, tuple[bool, float]]:
+def _check(run: GoldenRun, rust_only: bool = False) -> dict[str, tuple[bool, float]]:
     """Run one golden case through each available alternative backend.
 
     Args:
         run: The golden run to check.
+        rust_only: Skip the expression-tree Python backend.
 
     Returns:
         ``{backend: (passed, max_fraction_of_band)}`` for each backend run.
@@ -46,7 +49,7 @@ def _check(run: GoldenRun) -> dict[str, tuple[bool, float]]:
     is_cc = run.clamp_mode == CURRENT_CLAMP
     simulate = nc.simulate_current_clamp if is_cc else nc.simulate_voltage_clamp
 
-    results = {"tree": simulate(to_tree_neuron(neuron), stimulus)}
+    results = {} if rust_only else {"tree": simulate(to_tree_neuron(neuron), stimulus)}
     if HAVE_RUST and is_cc:
         results["rust"] = simulate_current_clamp(neuron, stimulus, backend="rust")
     return {
@@ -56,10 +59,13 @@ def _check(run: GoldenRun) -> dict[str, tuple[bool, float]]:
 
 
 def main() -> None:
-    """Print a pass/fail summary per backend."""
+    """Print a pass/fail summary per backend (``--rust-only`` skips tree rates)."""
+    rust_only = "--rust-only" in sys.argv[1:]
     runs = golden_runs()
+    if rust_only:
+        runs = [run for run in runs if run.clamp_mode == CURRENT_CLAMP]
     with ProcessPoolExecutor() as pool:
-        outcomes = list(pool.map(_check, runs))
+        outcomes = list(pool.map(partial(_check, rust_only=rust_only), runs))
     if not HAVE_RUST:
         print("neuroclamp_core is not built; skipping the Rust backend.")
     for backend in ("tree", "rust"):

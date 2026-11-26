@@ -31,6 +31,8 @@ pub struct Trace {
 #[derive(Debug, Clone)]
 pub struct Model {
     spec: ModelSpec,
+    /// Whether any channel carries Ca²⁺, so E_Ca must be evaluated.
+    has_ca_channels: bool,
 }
 
 /// Python's `max(lo, min(hi, x))`, NaN-compatible with the Python backend.
@@ -42,8 +44,11 @@ fn py_clamp(x: f64, lo: f64, hi: f64) -> f64 {
 impl Model {
     /// Build a model from the JSON spec emitted by Python's `lower()`.
     pub fn from_json(json: &str) -> Result<Self, String> {
+        let spec = ModelSpec::from_json(json)?;
+        let has_ca_channels = spec.channels.iter().any(|ch| ch.carries_calcium);
         Ok(Self {
-            spec: ModelSpec::from_json(json)?,
+            spec,
+            has_ca_channels,
         })
     }
 
@@ -70,17 +75,18 @@ impl Model {
     }
 
     /// One channel's current in µA/cm²: g_max · Π xᵖ · (V − E).
-    fn channel_current(&self, ch: &ChannelSpec, v: f64, gates: &[f64], ca: f64) -> f64 {
+    ///
+    /// `e_ca` is the live Ca²⁺ reversal potential, computed once per
+    /// evaluation by the caller and used only by Ca²⁺-carrying channels.
+    fn channel_current(&self, ch: &ChannelSpec, v: f64, gates: &[f64], e_ca: f64) -> f64 {
         let mut g = ch.g_max;
         for &(idx, power) in &ch.gates {
             // `powf` calls C `pow`, like Python's `x ** p`, which keeps squid
-            // bit-identical to the Python backend. `powi` (repeated
-            // multiplication) measured ~20% faster overall but drifts by
-            // ~1e-12 mV; revisit when benchmarking.
+            // bit-identical to the Python backend.
             g *= gates[idx].powf(f64::from(power));
         }
         let e_rev = if ch.carries_calcium {
-            self.e_ca(ca)
+            e_ca
         } else {
             ch.e_rev.unwrap_or(f64::NAN)
         };
@@ -89,8 +95,9 @@ impl Model {
 
     /// Evaluate dV/dt, dx/dt for every gate, and dCa/dt.
     ///
-    /// Writes gate derivatives into `d_gates` (preallocated by the caller, so
-    /// the hot loop never allocates) and returns `(dV, dCa)`.
+    /// Writes gate derivatives into `d_gates` and each channel's current into
+    /// `currents` (both preallocated by the caller, so the hot loop never
+    /// allocates) and returns `(dV, dCa)`.
     fn derivatives(
         &self,
         v: f64,
@@ -98,11 +105,18 @@ impl Model {
         ca: f64,
         i_ext: f64,
         d_gates: &mut [f64],
+        currents: &mut [f64],
     ) -> (f64, f64) {
+        let e_ca = if self.has_ca_channels {
+            self.e_ca(ca)
+        } else {
+            f64::NAN
+        };
         let mut i_total = 0.0;
         let mut i_ca = 0.0;
-        for ch in &self.spec.channels {
-            let i = self.channel_current(ch, v, gates, ca);
+        for (ch, out) in self.spec.channels.iter().zip(currents.iter_mut()) {
+            let i = self.channel_current(ch, v, gates, e_ca);
+            *out = i;
             i_total += i;
             if ch.carries_calcium {
                 i_ca += i;
@@ -122,17 +136,13 @@ impl Model {
         (dv, dca)
     }
 
-    /// Write one output row for the state `(v, gates, ca)`.
-    fn record(&self, row: &mut [f64], v: f64, gates: &[f64], ca: f64) {
-        let n_ch = self.spec.channels.len();
+    /// Write one output row from a state and its already-computed currents.
+    fn record(&self, row: &mut [f64], v: f64, gates: &[f64], ca: f64, currents: &[f64]) {
+        let n_ch = currents.len();
         row[0] = v;
-        let mut i_total = 0.0;
-        for (j, ch) in self.spec.channels.iter().enumerate() {
-            let i = self.channel_current(ch, v, gates, ca);
-            row[1 + j] = i;
-            i_total += i;
-        }
-        row[1 + n_ch] = i_total;
+        row[1..1 + n_ch].copy_from_slice(currents);
+        // Same summation order as `derivatives`, so Itotal matches bit for bit.
+        row[1 + n_ch] = currents.iter().fold(0.0, |acc, &i| acc + i);
         row[2 + n_ch..2 + n_ch + gates.len()].copy_from_slice(gates);
         if self.spec.calcium.is_some() {
             row[2 + n_ch + gates.len()] = ca;
@@ -169,6 +179,7 @@ impl Model {
         let (v_lo, v_hi) = self.spec.v_clamp_mv;
         let n_steps = i_ext.len();
         let n_cols = self.n_columns();
+        let n_ch = self.spec.channels.len();
         let mut data = vec![0.0; n_steps * n_cols];
 
         // Current state, plus scratch buffers reused every step.
@@ -182,15 +193,29 @@ impl Model {
             vec![0.0; n_gates],
         );
         let mut trial = vec![0.0; n_gates];
-
-        self.record(&mut data[..n_cols], v, &gates, ca);
+        // Currents at the current state (from the k1 evaluation, reused for
+        // the output row) and a scratch buffer for the k2..k4 sub-steps.
+        let mut currents = vec![0.0; n_ch];
+        let mut scratch = vec![0.0; n_ch];
 
         let half = 0.5 * dt;
         let sixth = dt / 6.0;
-        for step in 1..n_steps {
-            let i = i_ext[step - 1];
+        for step in 0..n_steps {
+            let i = i_ext[step];
 
-            let (dv1, dca1) = self.derivatives(v, &gates, ca, i, &mut d1);
+            // k1 is evaluated at the current state, which is also the state
+            // this step's output row records, so its currents are reused.
+            let (dv1, dca1) = self.derivatives(v, &gates, ca, i, &mut d1, &mut currents);
+            self.record(
+                &mut data[step * n_cols..(step + 1) * n_cols],
+                v,
+                &gates,
+                ca,
+                &currents,
+            );
+            if step + 1 == n_steps {
+                break;
+            }
 
             for ((t, &x), &d) in trial.iter_mut().zip(&gates).zip(&d1) {
                 *t = x + half * d;
@@ -201,6 +226,7 @@ impl Model {
                 ca + half * dca1,
                 i,
                 &mut d2,
+                &mut scratch,
             );
 
             for ((t, &x), &d) in trial.iter_mut().zip(&gates).zip(&d2) {
@@ -212,6 +238,7 @@ impl Model {
                 ca + half * dca2,
                 i,
                 &mut d3,
+                &mut scratch,
             );
 
             for ((t, &x), &d) in trial.iter_mut().zip(&gates).zip(&d3) {
@@ -223,6 +250,7 @@ impl Model {
                 ca + dt * dca3,
                 i,
                 &mut d4,
+                &mut scratch,
             );
 
             v = py_clamp(v + sixth * (dv1 + 2.0 * dv2 + 2.0 * dv3 + dv4), v_lo, v_hi);
@@ -231,8 +259,6 @@ impl Model {
                 *x = py_clamp(next, 0.0, 1.0);
             }
             ca = py_max(0.0, ca + sixth * (dca1 + 2.0 * dca2 + 2.0 * dca3 + dca4));
-
-            self.record(&mut data[step * n_cols..(step + 1) * n_cols], v, &gates, ca);
         }
         Ok(Trace {
             n_steps,
