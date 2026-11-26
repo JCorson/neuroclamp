@@ -1,6 +1,7 @@
 """Behavior tests for the ``neuroclamp ui`` working-directory launcher."""
 
 import http.server
+import logging
 import os
 import socket
 import threading
@@ -266,6 +267,8 @@ def test_browser_wait_warns_when_the_server_never_answers(
     thread.join(timeout=10)
 
     assert opened == []
-    (record,) = caplog.records
+    # Count only warnings: the launcher also logs at DEBUG, which caplog
+    # captures whenever an earlier test lowered the logger's level.
+    (record,) = [r for r in caplog.records if r.levelno >= logging.WARNING]
     assert record.levelname == "WARNING"
     assert url in record.getMessage()
