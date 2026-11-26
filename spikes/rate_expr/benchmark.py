@@ -17,9 +17,9 @@ from codegen import Compiled
 from translate import to_tree_neuron
 from verify_sims import I_STEP, V_STEP
 
-import patch_sim as ps
-import patch_sim.clamp_simulations as cs
-from patch_sim.rates import VoltageOnlyRate
+import neuroclamp as nc
+import neuroclamp.clamp_simulations as cs
+from neuroclamp.rates import VoltageOnlyRate
 
 PRESETS = [
     "Squid Giant Axon (Classic HH)",
@@ -75,12 +75,12 @@ def main() -> None:
         f"{'preset':34s} {'CC today/tree/codegen (s)':>27s}  VC today/tree/codegen (s)"
     )
     for key in PRESETS:
-        neuron = ps.NEURON_PRESETS[key]()
+        neuron = nc.NEURON_PRESETS[key]()
         variants = [neuron, to_tree_neuron(neuron), to_tree_neuron(neuron, Compiled)]
-        cc = [_best_of(ps.simulate_current_clamp, n, I_STEP) for n in variants]
-        vc = [_best_of(ps.simulate_voltage_clamp, n, V_STEP) for n in variants]
-        a = ps.simulate_current_clamp(variants[0], I_STEP)["voltage"]
-        b = ps.simulate_current_clamp(variants[2], I_STEP)["voltage"]
+        cc = [_best_of(nc.simulate_current_clamp, n, I_STEP) for n in variants]
+        vc = [_best_of(nc.simulate_voltage_clamp, n, V_STEP) for n in variants]
+        a = nc.simulate_current_clamp(variants[0], I_STEP)["voltage"]
+        b = nc.simulate_current_clamp(variants[2], I_STEP)["voltage"]
         print(
             f"{key:34s} {' / '.join(f'{t:.3f}' for t in cc):>27s}  "
             f"{' / '.join(f'{t:.3f}' for t in vc)}   "

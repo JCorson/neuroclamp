@@ -1,6 +1,6 @@
 """Gating-variable rate functions as small expression trees.
 
-Every node is a frozen dataclass and a callable :class:`~patch_sim.rates.Rate`
+Every node is a frozen dataclass and a callable :class:`~neuroclamp.rates.Rate`
 ``(V, ca_i) -> float``, so existing call sites (equilibrium, voltage-clamp
 tabulation, tests) keep working. ``to_spec()`` emits a plain nested dict that a
 compiled backend can deserialize (e.g. serde + pythonize in Rust).
@@ -14,8 +14,8 @@ from __future__ import annotations
 from dataclasses import dataclass, fields
 from typing import Any
 
-from patch_sim.rates import Rate
-from patch_sim.utils import safe_cosh, safe_exp
+from neuroclamp.rates import Rate
+from neuroclamp.utils import safe_cosh, safe_exp
 
 DEFAULT_TOL = 1e-6
 

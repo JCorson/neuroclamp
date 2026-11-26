@@ -1,8 +1,8 @@
 """Current-clamp entry point with an optional compiled backend.
 
 ``simulate_current_clamp(neuron, current, backend="rust")`` lowers the neuron,
-runs the Rust integrator in ``spikes/patch_sim_core``, and returns the same
-structured array as :func:`patch_sim.simulate_current_clamp`. The default
+runs the Rust integrator in ``spikes/neuroclamp_core``, and returns the same
+structured array as :func:`neuroclamp.simulate_current_clamp`. The default
 ``backend="python"`` simply calls the library.
 
 The extension is imported lazily, so this module works without it built.
@@ -18,17 +18,17 @@ import numpy as np
 from lower import lower
 from translate import to_tree_neuron
 
-import patch_sim as ps
-from patch_sim.clamp_simulations import _initialize_gating_variables, _setup_simulation
-from patch_sim.constants import SIM_SAMPLING_FREQ
-from patch_sim.neuron import Neuron
+import neuroclamp as nc
+from neuroclamp.clamp_simulations import _initialize_gating_variables, _setup_simulation
+from neuroclamp.constants import SIM_SAMPLING_FREQ
+from neuroclamp.neuron import Neuron
 
 Backend = Literal["python", "rust"]
 
 _BUILD_HINT = (
     "The Rust backend is not built. From the repo root run:\n"
     "  VIRTUAL_ENV=.venv uvx maturin develop --release --uv "
-    "-m spikes/patch_sim_core/Cargo.toml"
+    "-m spikes/neuroclamp_core/Cargo.toml"
 )
 
 
@@ -40,16 +40,16 @@ def _compiled_model(spec_json: str) -> Any:
         spec_json: The JSON-encoded output of :func:`lower.lower`.
 
     Returns:
-        A ``patch_sim_core.Model`` instance.
+        A ``neuroclamp_core.Model`` instance.
 
     Raises:
         ImportError: If the extension has not been built.
     """
     try:
-        import patch_sim_core
+        import neuroclamp_core
     except ImportError as exc:
         raise ImportError(_BUILD_HINT) from exc
-    return patch_sim_core.Model(spec_json)
+    return neuroclamp_core.Model(spec_json)
 
 
 def _has_tree_rates(neuron: Neuron) -> bool:
@@ -68,7 +68,7 @@ def _has_tree_rates(neuron: Neuron) -> bool:
 
 
 def _result_dtype(neuron: Neuron) -> np.dtype:
-    """Build the structured dtype used by ``patch_sim.simulate_current_clamp``.
+    """Build the structured dtype used by ``neuroclamp.simulate_current_clamp``.
 
     Args:
         neuron: The simulated neuron.
@@ -105,13 +105,13 @@ def simulate_current_clamp(
 
     Returns:
         A structured array with the same fields as
-        :func:`patch_sim.simulate_current_clamp`.
+        :func:`neuroclamp.simulate_current_clamp`.
 
     Raises:
         ValueError: If ``backend`` is unknown or the input is invalid.
     """
     if backend == "python":
-        return ps.simulate_current_clamp(neuron, current_external)
+        return nc.simulate_current_clamp(neuron, current_external)
     if backend != "rust":
         raise ValueError(f"unknown backend {backend!r}; use 'python' or 'rust'")
 

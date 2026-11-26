@@ -1,4 +1,4 @@
-"""Map every existing rate object in ``patch_sim.channels`` to an expression tree."""
+"""Map every existing rate object in ``neuroclamp.channels`` to an expression tree."""
 
 from __future__ import annotations
 
@@ -21,8 +21,8 @@ from exprs import (
     traub_miles,
 )
 
-import patch_sim.channels as chpkg
-from patch_sim.channels import (
+import neuroclamp.channels as chpkg
+from neuroclamp.channels import (
     GatingVariable,
     hh52,
     pospischil,
@@ -32,11 +32,11 @@ from patch_sim.channels import (
     thalamic,
     trn,
 )
-from patch_sim.channels import auxiliary as aux
-from patch_sim.channels import mainen_sejnowski as ms
-from patch_sim.electrochemistry import BoltzmannCoshRate
-from patch_sim.neuron import Neuron
-from patch_sim.rates import Rate
+from neuroclamp.channels import auxiliary as aux
+from neuroclamp.channels import mainen_sejnowski as ms
+from neuroclamp.electrochemistry import BoltzmannCoshRate
+from neuroclamp.neuron import Neuron
+from neuroclamp.rates import Rate
 
 _REGISTRY: dict[int, Expr] = {}
 
@@ -143,7 +143,7 @@ def translate(rate: Rate) -> Expr | None:
     """Return the expression tree for an existing rate object.
 
     Args:
-        rate: Any rate attached to a gating variable in ``patch_sim``.
+        rate: Any rate attached to a gating variable in ``neuroclamp``.
 
     Returns:
         The equivalent tree, or ``None`` if the rate is not covered.
@@ -167,14 +167,14 @@ def translate(rate: Rate) -> Expr | None:
 
 
 def all_module_rates() -> list[tuple[str, Rate]]:
-    """Find every Rate instance bound at module level in ``patch_sim.channels``.
+    """Find every Rate instance bound at module level in ``neuroclamp.channels``.
 
     Returns:
         ``(qualified_name, rate)`` pairs, deduplicated by object identity.
     """
     found: dict[int, tuple[str, Rate]] = {}
     for info in pkgutil.iter_modules(chpkg.__path__):
-        mod = importlib.import_module(f"patch_sim.channels.{info.name}")
+        mod = importlib.import_module(f"neuroclamp.channels.{info.name}")
         for key, value in vars(mod).items():
             if isinstance(value, Rate):
                 found.setdefault(id(value), (f"{info.name}.{key}", value))

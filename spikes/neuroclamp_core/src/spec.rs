@@ -50,7 +50,7 @@ pub struct CalciumSpec {
     pub faraday: f64,
 }
 
-/// The whole model, as lowered from a `patch_sim.Neuron`.
+/// The whole model, as lowered from a `neuroclamp.Neuron`.
 #[derive(Debug, Clone, Deserialize)]
 pub struct ModelSpec {
     pub version: u32,
@@ -111,7 +111,7 @@ impl ModelSpec {
                     return Err(format!("channel {:?} has no reversal potential", ch.name));
                 }
                 (true, _) if self.calcium.is_none() => {
-                    // patch_sim falls back to a 1e-9 mM floor here; no preset
+                    // neuroclamp falls back to a 1e-9 mM floor here; no preset
                     // does this, so the prototype rejects it instead.
                     return Err(format!(
                         "channel {:?} carries Ca²⁺ but the model has no calcium dynamics",

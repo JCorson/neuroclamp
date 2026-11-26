@@ -10,12 +10,12 @@ from typing import Any
 
 from translate import to_tree_neuron
 
-import patch_sim as ps
-from patch_sim.channels.base import _CA_NERNST_FLOOR
-from patch_sim.clamp_simulations import _V_CLAMP_MAX, _V_CLAMP_MIN
-from patch_sim.electrochemistry import F, R
-from patch_sim.neuron import Neuron
-from patch_sim.utils import SAFE_EXP_CLIP_MAX
+import neuroclamp as nc
+from neuroclamp.channels.base import _CA_NERNST_FLOOR
+from neuroclamp.clamp_simulations import _V_CLAMP_MAX, _V_CLAMP_MIN
+from neuroclamp.electrochemistry import F, R
+from neuroclamp.neuron import Neuron
+from neuroclamp.utils import SAFE_EXP_CLIP_MAX
 
 #: Spec format version; must match ``SPEC_VERSION`` in the Rust crate.
 SPEC_VERSION = 1
@@ -92,10 +92,10 @@ def lower(neuron: Neuron) -> dict[str, Any]:
 
 def main() -> None:
     """Print spec sizes for every preset and the full squid spec."""
-    for key, factory in ps.NEURON_PRESETS.items():
+    for key, factory in nc.NEURON_PRESETS.items():
         spec = json.dumps(lower(to_tree_neuron(factory())))
         print(f"{key:36s} {len(spec):6d} bytes JSON")
-    squid = ps.NEURON_PRESETS["Squid Giant Axon (Classic HH)"]()
+    squid = nc.NEURON_PRESETS["Squid Giant Axon (Classic HH)"]()
     print(json.dumps(lower(to_tree_neuron(squid)), indent=1))
 
 

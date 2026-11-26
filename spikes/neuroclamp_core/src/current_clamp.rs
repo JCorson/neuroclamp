@@ -1,7 +1,7 @@
 //! Fixed-step RK4 current-clamp integrator.
 //!
 //! This is a line-by-line port of `_simulate_current_clamp_core` and
-//! `_rk4_step_current_clamp` in `patch_sim/clamp_simulations.py`. The order of
+//! `_rk4_step_current_clamp` in `neuroclamp/clamp_simulations.py`. The order of
 //! floating-point operations follows the Python code so the two backends agree
 //! to within rounding (~1e-10 mV after hundreds of milliseconds).
 //!

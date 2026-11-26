@@ -1,9 +1,9 @@
 [package]
-name = "patch_sim_core"
+name = "neuroclamp_core"
 version = "0.0.0"
 edition = "2024"
 publish = false
-description = "Spike: compiled current-clamp integrator for patch_sim (see issue #410)."
+description = "Spike: compiled current-clamp integrator for neuroclamp (see issue #410)."
 
 [lib]
 # cdylib: the shared library Python imports. rlib: lets `cargo test` link the

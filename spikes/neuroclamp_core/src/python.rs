@@ -3,8 +3,8 @@
 //! Exposes one class to Python:
 //!
 //! ```python
-//! import patch_sim_core
-//! model = patch_sim_core.Model(spec_json)
+//! import neuroclamp_core
+//! model = neuroclamp_core.Model(spec_json)
 //! out = model.simulate_current_clamp(i_ext, v0, gates0, ca0, dt)  # 2-D ndarray
 //! ```
 //!
@@ -18,7 +18,7 @@ use pyo3::prelude::*;
 
 use crate::current_clamp::Model;
 
-/// A compiled patch_sim model, built once from a lowered JSON spec.
+/// A compiled neuroclamp model, built once from a lowered JSON spec.
 #[pyclass(name = "Model", frozen)]
 pub struct PyModel {
     inner: Model,
@@ -65,9 +65,9 @@ impl PyModel {
     }
 }
 
-/// Compiled simulation core for patch_sim (spike for issue #410).
+/// Compiled simulation core for neuroclamp (spike for issue #410).
 #[pymodule]
-mod patch_sim_core {
+mod neuroclamp_core {
     #[pymodule_export]
     use super::PyModel;
 }

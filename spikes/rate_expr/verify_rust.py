@@ -12,12 +12,12 @@ import numpy as np
 from backend import simulate_current_clamp
 from verify_sims import I_STEP
 
-import patch_sim as ps
+import neuroclamp as nc
 
 SQUID = "Squid Giant Axon (Classic HH)"
 
 
-def _compare(neuron: ps.Neuron, current: np.ndarray) -> tuple[float, str, float]:
+def _compare(neuron: nc.Neuron, current: np.ndarray) -> tuple[float, str, float]:
     """Run both backends and find the largest per-field deviation.
 
     Args:
@@ -42,7 +42,7 @@ def _compare(neuron: ps.Neuron, current: np.ndarray) -> tuple[float, str, float]
     return worst, worst_field, dv
 
 
-def _best_of(neuron: ps.Neuron, current: np.ndarray, backend: str) -> float:
+def _best_of(neuron: nc.Neuron, current: np.ndarray, backend: str) -> float:
     """Return the fastest of three runs in seconds.
 
     Args:
@@ -64,7 +64,7 @@ def _best_of(neuron: ps.Neuron, current: np.ndarray, backend: str) -> float:
 def main() -> None:
     """Print per-preset agreement and a quick timing comparison."""
     print("Agreement, 150 ms current step (max |Python - Rust| over all fields):")
-    for key, factory in ps.NEURON_PRESETS.items():
+    for key, factory in nc.NEURON_PRESETS.items():
         worst, field, dv = _compare(factory(), I_STEP)
         label = " <- squid (target preset)" if key == SQUID else ""
         print(
@@ -73,7 +73,7 @@ def main() -> None:
 
     print("\nTiming, 150 ms current step (best of 3, includes lowering and wrapping):")
     for key in [SQUID, "Purkinje Neuron"]:
-        neuron = ps.NEURON_PRESETS[key]()
+        neuron = nc.NEURON_PRESETS[key]()
         simulate_current_clamp(neuron, I_STEP, backend="rust")  # warm the model cache
         t_py = _best_of(neuron, I_STEP, "python")
         t_rs = _best_of(neuron, I_STEP, "rust")

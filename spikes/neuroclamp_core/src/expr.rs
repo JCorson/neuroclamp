@@ -11,13 +11,13 @@
 
 use serde::Deserialize;
 
-/// Largest |x| passed to `exp`/`cosh`; matches `patch_sim.utils.SAFE_EXP_CLIP_MAX`.
+/// Largest |x| passed to `exp`/`cosh`; matches `neuroclamp.utils.SAFE_EXP_CLIP_MAX`.
 pub const EXP_CLIP: f64 = 100.0;
 
 /// `exp(x)` with the input clipped to `[-EXP_CLIP, EXP_CLIP]`.
 ///
 /// NaN passes through: both comparisons are false for NaN, so it reaches
-/// `x.exp()`, which returns NaN, exactly like `patch_sim.utils.safe_exp`.
+/// `x.exp()`, which returns NaN, exactly like `neuroclamp.utils.safe_exp`.
 pub fn safe_exp(x: f64) -> f64 {
     if x > EXP_CLIP {
         EXP_CLIP.exp()

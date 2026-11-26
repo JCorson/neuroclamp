@@ -12,8 +12,8 @@ from dataclasses import dataclass, field
 
 import exprs as E
 
-from patch_sim.rates import Rate
-from patch_sim.utils import safe_cosh, safe_exp
+from neuroclamp.rates import Rate
+from neuroclamp.utils import safe_cosh, safe_exp
 
 _BINARY_OPS: dict[type, str] = {E.Add: "+", E.Sub: "-", E.Mul: "*", E.Div: "/"}
 

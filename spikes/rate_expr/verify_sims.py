@@ -5,7 +5,7 @@ from __future__ import annotations
 import numpy as np
 from translate import to_tree_neuron
 
-import patch_sim as ps
+import neuroclamp as nc
 
 # 150 ms current step (10 ms baseline, 100 ms at 8 µA/cm², 40 ms recovery).
 I_STEP = np.concatenate([np.zeros(400), np.full(4000, 8.0), np.zeros(1600)])
@@ -17,13 +17,13 @@ V_STEP = np.concatenate(
 
 def main() -> None:
     """Print max voltage (current clamp) and current (voltage clamp) deviations."""
-    for key, factory in ps.NEURON_PRESETS.items():
+    for key, factory in nc.NEURON_PRESETS.items():
         neuron = factory()
         tree_neuron = to_tree_neuron(neuron)
-        cc_a = ps.simulate_current_clamp(neuron, I_STEP)
-        cc_b = ps.simulate_current_clamp(tree_neuron, I_STEP)
-        vc_a = ps.simulate_voltage_clamp(neuron, V_STEP)
-        vc_b = ps.simulate_voltage_clamp(tree_neuron, V_STEP)
+        cc_a = nc.simulate_current_clamp(neuron, I_STEP)
+        cc_b = nc.simulate_current_clamp(tree_neuron, I_STEP)
+        vc_a = nc.simulate_voltage_clamp(neuron, V_STEP)
+        vc_b = nc.simulate_voltage_clamp(tree_neuron, V_STEP)
         dv = np.max(np.abs(cc_a["voltage"] - cc_b["voltage"]))
         scale = max(float(np.max(np.abs(vc_a["Itotal"]))), 1e-12)
         di = np.max(np.abs(vc_a["Itotal"] - vc_b["Itotal"])) / scale
