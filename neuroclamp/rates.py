@@ -1,11 +1,12 @@
 """Gating-variable rate-function class hierarchy.
 
 Every alpha/beta rate attached to a :class:`~neuroclamp.channels.GatingVariable`
-is an instance of :class:`Rate`.  The abstract subclasses
-:class:`VoltageOnlyRate` and :class:`CalciumDependentRate` discriminate whether
-a rate's output depends on ca_i.  The voltage-clamp optimizer uses this split
-to tabulate V-only rates over the prescribed voltage protocol; Ca²⁺-dependent
-rates are evaluated scalar-wise in the RK4 loop.
+is an instance of :class:`Rate`.  :attr:`Rate.uses_calcium` reports whether a
+rate's output depends on ca_i.  The voltage-clamp optimizer tabulates rates
+that do not read ca_i over the prescribed voltage protocol; Ca²⁺-dependent
+rates are evaluated scalar-wise in the RK4 loop.  The abstract subclasses
+:class:`VoltageOnlyRate` and :class:`CalciumDependentRate` fix
+``uses_calcium`` to ``False`` and ``True`` respectively.
 
 Concrete adapters :class:`VoltageOnlyFn` and :class:`CalciumDependentFn` wrap
 plain ``(V, ca_i) -> float`` callables so existing module-level rate functions
@@ -22,6 +23,19 @@ from dataclasses import dataclass
 class Rate(ABC):
     """Abstract base class for gating-variable rate functions."""
 
+    @property
+    def uses_calcium(self) -> bool:
+        """Whether the rate's output depends on ca_i.
+
+        Rates that do not read ca_i are tabulated over the prescribed voltage
+        protocol in voltage clamp.  The base class conservatively reports
+        ``True``, so a rate is only tabulated when it says it is safe to.
+
+        Returns:
+            ``True`` if the rate may depend on ca_i.
+        """
+        return True
+
     @abstractmethod
     def __call__(self, V: float, ca_i: float) -> float:
         """Evaluate the rate.
@@ -36,17 +50,35 @@ class Rate(ABC):
 
 
 class VoltageOnlyRate(Rate):
-    """Marker base class for rates whose output is independent of ca_i.
+    """Base class for rates whose output is independent of ca_i.
 
     Subclasses are safe to tabulate over a prescribed voltage protocol.
     """
 
+    @property
+    def uses_calcium(self) -> bool:
+        """Report that the rate does not read ca_i.
+
+        Returns:
+            Always ``False``.
+        """
+        return False
+
 
 class CalciumDependentRate(Rate):
-    """Marker base class for rates whose output depends on ca_i.
+    """Base class for rates whose output depends on ca_i.
 
     Subclasses must be evaluated scalar-wise at the current (V, ca_i).
     """
+
+    @property
+    def uses_calcium(self) -> bool:
+        """Report that the rate reads ca_i.
+
+        Returns:
+            Always ``True``.
+        """
+        return True
 
 
 @dataclass(frozen=True)
