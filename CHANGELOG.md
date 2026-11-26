@@ -12,7 +12,7 @@ listed under **Changed** or **Removed**.
 
 ## [Unreleased]
 
-## [0.1.0] - Unreleased
+## [0.1.0] - 2026-11-25
 
 The first release of patch-sim, a patch-clamp experiment simulator built on
 conductance-based (Hodgkin-Huxley) neuron models. It ships as a Python library
