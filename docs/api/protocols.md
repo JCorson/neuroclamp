@@ -6,28 +6,28 @@ the generators can also be called directly for single-sweep stimuli.
 
 ## Dispatchers
 
-::: patch_sim.build_current_protocol
+::: neuroclamp.build_current_protocol
 
-::: patch_sim.build_voltage_protocol
+::: neuroclamp.build_voltage_protocol
 
 ## Current-clamp generators
 
-::: patch_sim.step_current
+::: neuroclamp.step_current
 
-::: patch_sim.ramp_current
+::: neuroclamp.ramp_current
 
-::: patch_sim.pulse_train
+::: neuroclamp.pulse_train
 
-::: patch_sim.sinusoidal_current
+::: neuroclamp.sinusoidal_current
 
-::: patch_sim.chirp_current
+::: neuroclamp.chirp_current
 
-::: patch_sim.noise_current
+::: neuroclamp.noise_current
 
 ## Voltage-clamp generators
 
-::: patch_sim.step_voltage
+::: neuroclamp.step_voltage
 
-::: patch_sim.ramp_voltage
+::: neuroclamp.ramp_voltage
 
-::: patch_sim.pulse_train_voltage
+::: neuroclamp.pulse_train_voltage

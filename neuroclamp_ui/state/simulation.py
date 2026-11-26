@@ -1,0 +1,1067 @@
+"""Simulation state for the neuroclamp web UI.
+
+SimulationState owns simulation results, sweep collections, continuous mode,
+and the figure computed var.  Cross-cutting state lives in the sibling
+substates (NeuronState, ProtocolState, VisibilityState, AnalysisState, LogState).
+
+Pure analysis-formatting helpers, the synchronous sweep executor, and the
+Plotly JS asset loaders live in private sibling modules:
+
+* :mod:`neuroclamp_ui.state._analysis_format` — display-formatting helpers
+* :mod:`neuroclamp_ui.state._sweep_executor` — :func:`_compute_simulation`
+  and the :class:`_SimResult` carrier
+* :mod:`neuroclamp_ui.state._figure_js` — Plotly JS template loaders
+"""
+
+import asyncio
+import json
+import logging
+import time
+import uuid
+from datetime import datetime
+from typing import Any, AsyncGenerator
+
+import reflex as rx
+from reflex.config import get_config as _get_config
+
+import neuroclamp
+from neuroclamp.constants import CURRENT_CLAMP, INACTIVATION_PROTOCOL, VOLTAGE_CLAMP
+from neuroclamp_ui import constants, presets
+from neuroclamp_ui.api import exports, traces
+from neuroclamp_ui.channels import (
+    CURRENT_FIELD_MAP,
+    GATING_FIELD_MAP,
+)
+from neuroclamp_ui.export import (
+    build_export_metadata,
+    export_filename,
+    sweeps_to_csv,
+)
+from neuroclamp_ui.plotting import (
+    TraceVisibility,
+    build_figure,
+    compute_trace_visibility_map,
+)
+from neuroclamp_ui.state._common import (
+    _LOG_SCROLL_JS,
+    _PLOTLY_GD_JS,
+)
+from neuroclamp_ui.state._figure_js import (
+    _render_fetch_figure_js,
+    _render_sweep_highlight_js,
+)
+from neuroclamp_ui.state._sweep_executor import _compute_simulation, _SimResult
+from neuroclamp_ui.state.analysis import AnalysisState
+from neuroclamp_ui.state.log import LogState
+from neuroclamp_ui.state.neuron import NeuronState
+from neuroclamp_ui.state.protocol import ProtocolState
+from neuroclamp_ui.state.visibility import VisibilityState
+from neuroclamp_ui.sweep import Sweep
+
+logger = logging.getLogger(__name__)
+
+#: Debounce window (seconds) for slider-driven membrane test requests.
+_MT_DEBOUNCE_S: float = 0.3
+
+
+_TIMING_PARAMS: list[tuple[str, str]] = [
+    ("pre_stimulus_duration", "pre_stimulus_duration_ms"),
+    ("stimulus_duration", "stimulus_duration_ms"),
+    ("post_stimulus_duration", "post_stimulus_duration_ms"),
+]
+_STEP_RANGE_CC: list[tuple[str, str]] = [
+    ("min_stimulus", "min_stimulus_uA_cm2"),
+    ("max_stimulus", "max_stimulus_uA_cm2"),
+    ("stimulus_step", "stimulus_step_uA_cm2"),
+]
+_STEP_RANGE_VC: list[tuple[str, str]] = [
+    ("min_stimulus", "min_stimulus_mV"),
+    ("max_stimulus", "max_stimulus_mV"),
+    ("stimulus_step", "stimulus_step_mV"),
+]
+_HOLDING_VC: list[tuple[str, str]] = [("holding_voltage", "holding_voltage_mV")]
+
+#: Stimulus parameters (beyond the timing fields) that
+#: :meth:`ProtocolState._build_protocols` actually feeds each protocol, as
+#: ``(ProtocolState field, export key)`` pairs with the unit in the key.
+_PROTOCOL_EXPORT_FIELDS: dict[tuple[str, str], list[tuple[str, str]]] = {
+    (CURRENT_CLAMP, "Step"): _STEP_RANGE_CC,
+    (CURRENT_CLAMP, "Ramp"): [
+        ("start_current", "start_current_uA_cm2"),
+        ("end_current", "end_current_uA_cm2"),
+    ],
+    (CURRENT_CLAMP, "Pulse Train"): [
+        ("pulse_amplitude", "pulse_amplitude_uA_cm2"),
+        ("pulse_width", "pulse_width_ms"),
+        ("pulse_interval", "pulse_interval_ms"),
+    ],
+    (CURRENT_CLAMP, "Sinusoidal"): [
+        ("dc_offset", "dc_offset_uA_cm2"),
+        ("amplitude", "amplitude_uA_cm2"),
+        ("frequency", "frequency_Hz"),
+    ],
+    (CURRENT_CLAMP, "Chirp"): [
+        ("dc_offset", "dc_offset_uA_cm2"),
+        ("amplitude", "amplitude_uA_cm2"),
+        ("start_frequency", "start_frequency_Hz"),
+        ("end_frequency", "end_frequency_Hz"),
+    ],
+    (CURRENT_CLAMP, "Noise"): [
+        ("mean_current", "mean_current_uA_cm2"),
+        ("std_current", "std_current_uA_cm2"),
+    ],
+    (VOLTAGE_CLAMP, "Step"): _HOLDING_VC + _STEP_RANGE_VC,
+    (VOLTAGE_CLAMP, "Ramp"): _HOLDING_VC
+    + [
+        ("vc_start_voltage", "start_voltage_mV"),
+        ("vc_end_voltage", "end_voltage_mV"),
+    ],
+    (VOLTAGE_CLAMP, "Pulse Train"): _HOLDING_VC
+    + [
+        ("vc_pulse_amplitude", "pulse_amplitude_mV"),
+        ("vc_pulse_width", "pulse_width_ms"),
+        ("vc_pulse_interval", "pulse_interval_ms"),
+    ],
+    # The swept range is the conditioning prepulse; the holding voltage is
+    # replaced by it, so only the test pulse is recorded besides the range.
+    (VOLTAGE_CLAMP, INACTIVATION_PROTOCOL): [
+        ("min_stimulus", "min_prepulse_mV"),
+        ("max_stimulus", "max_prepulse_mV"),
+        ("stimulus_step", "prepulse_step_mV"),
+        ("test_pulse_voltage", "test_pulse_voltage_mV"),
+    ],
+}
+
+
+def _protocol_export_params(proto_st: "ProtocolState") -> dict[str, float]:
+    """Return the protocol parameters recorded in exports.
+
+    Only the parameters that the active protocol actually uses are recorded
+    (see :data:`_PROTOCOL_EXPORT_FIELDS`), plus the pre/stim/post timing.
+
+    Args:
+        proto_st: Protocol state to read.
+
+    Returns:
+        Mapping of export metadata key to value, with the unit encoded in
+        the key.  The mapping is empty of stimulus fields for an unknown
+        protocol type.
+    """
+    fields = _TIMING_PARAMS + _PROTOCOL_EXPORT_FIELDS.get(
+        (proto_st.clamp_mode, proto_st.protocol_type), []
+    )
+    return {key: getattr(proto_st, attr) for attr, key in fields}
+
+
+class SimulationState(rx.State):
+    """State for simulation results, sweep collections, and figure rendering."""
+
+    # Synced copy of NeuronState.active_neuron_type used by store_trace for
+    # labeling (avoids making those handlers async).
+    _label_neuron_type: str = "Squid Giant Axon (Classic HH)"
+    # Synced copy of ProtocolState.clamp_mode used by _rebuild_figure_and_fetch_js
+    # and _apply_visibility_js (both are synchronous, cannot call get_state).
+    _figure_clamp_mode: str = CURRENT_CLAMP
+
+    # ------------------------------------------------------------------ #
+    # Simulation results                                                  #
+    # ------------------------------------------------------------------ #
+    # Backend-only: excluded from the Reflex state delta so that millions of
+    # floats are not JSON-serialised on every state flush.  Served to the
+    # browser via /api/figure/{sim_token} (see neuroclamp_ui/api/traces.py).
+    _current_sweeps: list[Sweep] = []  # Latest simulation result
+    # Provenance of ``_current_sweeps`` captured when the simulation ran (the
+    # live neuron/protocol panels may have changed since).  Backend-only for
+    # the same reason as the sweeps; consumed by ``export_csv``.
+    _export_metadata: list[tuple[str, str]] = []
+    _export_neuron_name: str = ""  # Neuron preset that produced the sweeps
+    _export_protocol_name: str = ""  # Protocol preset (or type) that ran
+    stored_traces: list[Sweep] = []  # Oscilloscope-style stored reference traces
+    # Short token identifying the latest figure in the side-channel store.
+    # Pushed to the client so JS can fetch /api/figure/{sim_token}.
+    sim_token: str = ""
+
+    # ------------------------------------------------------------------ #
+    # Continuous simulation mode                                        #
+    # ------------------------------------------------------------------ #
+    continuous_mode: bool = False  # user has toggled continuous on
+    continuous_loop_running: bool = False  # background task is executing
+
+    # Terminal neuron state carried between continuous loop iterations.
+    # Prefixed with _ by convention; still full Reflex state vars.
+    _cont_V: float = 0.0
+    _cont_gating: dict[str, float] = {}
+    _cont_ca_i: float = 0.0
+    _cont_has_state: bool = False  # True once at least one iteration has run
+    _mt_request_id: int = 0  # incremented per slider event; debounce uses this
+
+    # ------------------------------------------------------------------ #
+    # UI state                                                           #
+    # ------------------------------------------------------------------ #
+    is_running: bool = False
+    error_message: str = ""
+    show_hover: bool = True  # Whether plot hover tooltips are visible
+    # Index of the last click-selected sweep seeded into the JS on figure
+    # rebuild (-1 = none selected).  Selection state is managed entirely
+    # client-side by ``window._psSweep``; this field is only written by
+    # Python (reset on run/clamp-mode change) so that the correct seed value
+    # is injected when the JS module is re-initialized after a figure rebuild.
+    #
+    # Known limitation: this field is never updated from the client side, so
+    # any figure rebuild triggered by a Python state change while the user has
+    # a client-side selection active will re-seed JS with -1, silently
+    # clearing the selection.
+    selected_sweep: int = -1
+
+    # ------------------------------------------------------------------ #
+    # Analysis sidebar state                                             #
+    # ------------------------------------------------------------------ #
+    analysis_panel_open: bool = True
+
+    # ------------------------------------------------------------------ #
+    # Computed properties                                               #
+    # ------------------------------------------------------------------ #
+    @rx.var
+    def has_result(self) -> bool:
+        """Whether a simulation result is available."""
+        return len(self._current_sweeps) > 0
+
+    @rx.var
+    def has_stored_traces(self) -> bool:
+        """Whether any oscilloscope-stored reference traces exist."""
+        return len(self.stored_traces) > 0
+
+    @rx.var
+    def is_multi_sweep(self) -> bool:
+        """Whether the current simulation has multiple sweeps (e.g. I-V protocol)."""
+        return len(self._current_sweeps) > 1
+
+    @rx.var
+    def continuous_active(self) -> bool:
+        """True when continuous mode is enabled and the loop is running."""
+        return self.continuous_mode and self.continuous_loop_running
+
+    # ------------------------------------------------------------------ #
+    # Event handlers                                                     #
+    # ------------------------------------------------------------------ #
+    def _clear_for_new_protocol(self) -> None:
+        """Clear all simulation results and reset continuous state.
+
+        Called by ProtocolState when the clamp mode or a protocol preset
+        changes, ensuring stale results are not shown for the new protocol.
+        """
+        self._current_sweeps = []
+        self._export_metadata = []
+        self._export_neuron_name = ""
+        self._export_protocol_name = ""
+        self.stored_traces = []
+        self.sim_token = ""
+        self._cont_has_state = False
+        self.selected_sweep = -1
+
+    async def initialize_defaults(self) -> AsyncGenerator[Any, None]:
+        """Apply the default neuron and protocol presets on app startup or reset.
+
+        Reflex class-level defaults set ``active_neuron_type`` and the scalar
+        neuron fields independently, so the displayed preset can be out of sync
+        with the underlying parameters (e.g. ``Q10`` defaults to ``3.0`` from
+        :class:`~neuroclamp.Neuron` but the SGA preset requires ``1.0``).
+        This method bootstraps a consistent state by calling
+        :meth:`NeuronState._apply_neuron_preset` and
+        :meth:`ProtocolState._apply_protocol_preset` for the configured
+        defaults, then yields :meth:`run_membrane_test` to populate the passive
+        properties panel.
+
+        Idempotent: safe to call repeatedly.
+        """
+        neuron_st = await self.get_state(NeuronState)
+        neuron_st._apply_neuron_preset(presets.DEFAULT_NEURON_PRESET)
+
+        proto_st = await self.get_state(ProtocolState)
+        proto_st._apply_protocol_preset(
+            presets.DEFAULT_PROTOCOL_PRESET, presets.DEFAULT_NEURON_PRESET
+        )
+
+        for key, value in presets.PROTOCOL_NEURON_OVERRIDES.get(
+            presets.DEFAULT_PROTOCOL_PRESET, {}
+        ).items():
+            setattr(neuron_st, key, value)
+
+        self._label_neuron_type = presets.DEFAULT_NEURON_PRESET
+        self._figure_clamp_mode = proto_st.clamp_mode
+
+        yield SimulationState.run_membrane_test
+
+    async def reset_to_defaults(self) -> AsyncGenerator[Any, None]:
+        """Reset state to preset defaults for the current neuron and protocol.
+
+        Captures the active neuron type and protocol preset before resetting,
+        then re-applies those same selections so the user's neuron and protocol
+        choice is preserved while all parameter values are restored to their
+        preset defaults.
+        """
+        neuron_st = await self.get_state(NeuronState)
+        neuron_type = neuron_st.active_neuron_type
+        proto_st = await self.get_state(ProtocolState)
+        protocol_preset = proto_st.active_protocol_preset
+
+        self.reset()
+        neuron_st.reset()
+        proto_st.reset()
+        vis_st = await self.get_state(VisibilityState)
+        vis_st.reset()
+        analysis_st = await self.get_state(AnalysisState)
+        analysis_st.reset()
+        log_st = await self.get_state(LogState)
+        log_st.reset()
+
+        neuron_st._apply_neuron_preset(neuron_type)
+        if protocol_preset:
+            proto_st._apply_protocol_preset(protocol_preset, neuron_type)
+            for key, value in presets.PROTOCOL_NEURON_OVERRIDES.get(
+                protocol_preset, {}
+            ).items():
+                setattr(neuron_st, key, value)
+
+        self._label_neuron_type = neuron_type
+        self._figure_clamp_mode = proto_st.clamp_mode
+
+        yield rx.call_script(
+            "var gd=document.getElementById('ps-trace-plot');"
+            "if(gd&&gd.data){Plotly.purge(gd);}"
+        )
+        yield SimulationState.run_membrane_test
+
+    def toggle_analysis_panel(self) -> None:
+        """Toggle the right-hand analysis sidebar open or closed."""
+        self.analysis_panel_open = not self.analysis_panel_open
+
+    def toggle_hover(self):
+        """Toggle plot hover tooltips on or off.
+
+        Flips ``show_hover`` and issues a client-side ``Plotly.relayout`` call
+        to update the figure's ``hovermode`` without triggering a full rebuild.
+        When hover is disabled, ``hovermode`` is set to ``false``.  When
+        re-enabled it is restored to ``"x unified"`` for single-sweep traces or
+        ``"x"`` for multi-sweep (I-V Curve) results.
+
+        Returns:
+            A ``rx.call_script`` event that applies the relayout in-browser.
+        """
+        self.show_hover = not self.show_hover
+        if self.show_hover:
+            hovermode = "x" if len(self._current_sweeps) > 1 else "x unified"
+            hovermode_js = f'"{hovermode}"'
+        else:
+            hovermode_js = "false"
+        js = (
+            f"{_PLOTLY_GD_JS}"
+            f"if(gd&&gd.layout)Plotly.relayout(gd,{{hovermode:{hovermode_js}}})"
+        )
+        return rx.call_script(js)
+
+    # ------------------------------------------------------------------ #
+    # Trace management                                                   #
+    # ------------------------------------------------------------------ #
+    def _apply_visibility_js(self, vis_st: "VisibilityState") -> str | None:
+        """Build a JS snippet to re-apply trace visibility, hover, and sweep highlight.
+
+        Called after any operation that triggers a full figure rebuild (run
+        simulation, store trace, clear stored traces) so that traces the user
+        has toggled off are correctly hidden again, the hover mode matches the
+        current ``show_hover`` flag, and sweep highlight listeners are
+        (re-)attached in multi-sweep mode.
+
+        Args:
+            vis_st: Current VisibilityState instance providing show_* values.
+                Passed in by the caller rather than fetched via ``self.get_state``
+                because this method is synchronous and ``get_state`` is async-only.
+
+        Returns:
+            A JS string that re-applies trace visibility, hover mode, and
+            sweep highlight, or ``None`` when nothing needs to be applied.
+        """
+        trace_map = compute_trace_visibility_map(
+            current_sweeps=self._current_sweeps,
+            clamp_mode=self._figure_clamp_mode,
+            additional_current_field_map=CURRENT_FIELD_MAP,
+            additional_gating_field_map=GATING_FIELD_MAP,
+            stored_traces=self.stored_traces,
+        )
+        hidden: list[int] = []
+        for field_name, indices in trace_map.items():
+            if not getattr(vis_st, field_name, True):
+                hidden.extend(indices)
+
+        parts: list[str] = []
+        if hidden:
+            parts.append(
+                f"if(gd&&gd.data)Plotly.restyle(gd,"
+                f"{{visible:false}},{json.dumps(hidden)});"
+            )
+        if not self.show_hover:
+            parts.append("if(gd&&gd.layout)Plotly.relayout(gd,{hovermode:false});")
+
+        # Inject sweep highlight listeners in multi-sweep mode.
+        is_multi = len(self._current_sweeps) > 1
+        if is_multi:
+            parts.append(self._sweep_highlight_js())
+
+        if not parts:
+            return None
+        body = "".join(parts)
+        return (
+            f"setTimeout(function(){{"
+            f"var gd=document.getElementById('ps-trace-plot');"
+            f"{body}"
+            f"}},0)"
+        )
+
+    def _build_fetch_figure_js(self, token: str, vis_st: "VisibilityState") -> str:
+        """Build a JS snippet that fetches the stored figure and swaps it in.
+
+        Fetches ``/api/figure/{token}`` (JSON Plotly figure), calls
+        ``Plotly.react`` to replace the current traces, then immediately
+        re-applies the current visibility state (hidden traces, hover mode,
+        sweep-highlight listeners).
+
+        The entire snippet is wrapped in ``setTimeout(async fn, 0)`` so it
+        runs after the Reflex state flush has finished updating the DOM.
+
+        Args:
+            token: UUID hex token identifying the figure in the side-channel
+                store.
+            vis_st: Current ``VisibilityState`` instance providing show_* values.
+
+        Returns:
+            A self-contained JS string suitable for ``rx.call_script``.
+        """
+        trace_map = compute_trace_visibility_map(
+            current_sweeps=self._current_sweeps,
+            clamp_mode=self._figure_clamp_mode,
+            additional_current_field_map=CURRENT_FIELD_MAP,
+            additional_gating_field_map=GATING_FIELD_MAP,
+            stored_traces=self.stored_traces,
+        )
+        hidden: list[int] = []
+        for field_name, indices in trace_map.items():
+            if not getattr(vis_st, field_name, True):
+                hidden.extend(indices)
+
+        post_parts: list[str] = []
+        if hidden:
+            post_parts.append(
+                f"Plotly.restyle(gd,{{visible:false}},{json.dumps(hidden)});"
+            )
+        if not self.show_hover:
+            post_parts.append("Plotly.relayout(gd,{hovermode:false});")
+        if len(self._current_sweeps) > 1:
+            post_parts.append(self._sweep_highlight_js())
+        post_js = "".join(post_parts)
+
+        api_url = _get_config().api_url.rstrip("/")
+        return _render_fetch_figure_js(token, post_js, api_url)
+
+    def _sweep_highlight_js(self) -> str:
+        """Return the sweep highlight JS with styling constants substituted.
+
+        Returns:
+            A self-executing JS function string.
+        """
+        return _render_sweep_highlight_js(self.selected_sweep)
+
+    def _rebuild_figure_and_fetch_js(
+        self, stored_traces: list[Sweep], vis_st: "VisibilityState"
+    ) -> str:
+        """Build and store a fresh figure, return JS to fetch-and-swap it.
+
+        Builds a figure from ``_current_sweeps`` and *stored_traces*, serialises
+        it into the side-channel store under a fresh token, updates
+        ``sim_token``, and returns the fetch-and-swap JS snippet ready for
+        ``rx.call_script``.
+
+        Args:
+            stored_traces: Reference traces to include alongside current sweeps.
+            vis_st: Current VisibilityState for post-swap visibility application.
+
+        Returns:
+            JS string for ``rx.call_script``.
+        """
+        fig = build_figure(
+            current_sweeps=self._current_sweeps,
+            visibility=TraceVisibility(),
+            clamp_mode=self._figure_clamp_mode,
+            stored_traces=stored_traces,
+            show_hover=self.show_hover,
+        )
+        new_token = uuid.uuid4().hex
+        traces.put(new_token, fig)
+        self.sim_token = new_token
+        return self._build_fetch_figure_js(new_token, vis_st)
+
+    # ------------------------------------------------------------------ #
+    # Stored trace management                                            #
+    # ------------------------------------------------------------------ #
+    def _do_store_trace(self) -> None:
+        """Snapshot the current sweep into stored traces without applying visibility JS.
+
+        Core logic extracted so tests can call it synchronously.
+        """
+        if not self.has_result:
+            return
+        idx = len(self.stored_traces)
+        color = constants.STORED_TRACE_COLORS[idx % len(constants.STORED_TRACE_COLORS)]
+        label = f"Stored {idx + 1} ({self._label_neuron_type})"
+        self.stored_traces.append(
+            self._current_sweeps[0].model_copy(update={"color": color, "label": label})
+        )
+
+    async def store_trace(self) -> None:
+        """Snapshot the current sweep into the oscilloscope stored traces."""
+        self._do_store_trace()
+        vis_st = await self.get_state(VisibilityState)
+        if self._current_sweeps:
+            return rx.call_script(
+                self._rebuild_figure_and_fetch_js(self.stored_traces, vis_st)
+            )
+        js = self._apply_visibility_js(vis_st)
+        if js:
+            return rx.call_script(js)
+
+    def _do_clear_stored_traces(self) -> None:
+        """Remove all stored traces without applying visibility JS.
+
+        Core logic extracted so tests can call it synchronously.
+        """
+        self.stored_traces = []
+
+    async def clear_stored_traces(self) -> None:
+        """Remove all oscilloscope stored traces."""
+        self._do_clear_stored_traces()
+        vis_st = await self.get_state(VisibilityState)
+        if self._current_sweeps:
+            return rx.call_script(self._rebuild_figure_and_fetch_js([], vis_st))
+        js = self._apply_visibility_js(vis_st)
+        if js:
+            return rx.call_script(js)
+
+    def _record_export_context(
+        self,
+        neuron: "neuroclamp.Neuron",
+        *,
+        neuron_preset: str,
+        protocol_preset: str,
+        mode: str,
+        ptype: str,
+        protocol_params: dict[str, float],
+        continuous: bool = False,
+    ) -> None:
+        """Capture the provenance of ``_current_sweeps`` for CSV export.
+
+        The neuron and protocol panels reflect live UI values rather than what
+        produced the displayed sweeps, so the context is recorded at run time.
+        Call after ``_current_sweeps`` has been assigned.
+
+        Args:
+            neuron: The neuron that was simulated.
+            neuron_preset: Name of the neuron preset in effect.
+            protocol_preset: Name of the protocol preset in effect (may be
+                empty when the user edited the protocol by hand).
+            mode: Clamp mode that was run.
+            ptype: Protocol type that was run.
+            protocol_params: Protocol timing and stimulus range, as returned
+                by :func:`_protocol_export_params`.
+            continuous: Whether this is a continuous-mode iteration.
+        """
+        self._export_metadata = build_export_metadata(
+            neuron,
+            neuron_preset=neuron_preset,
+            protocol_preset=protocol_preset,
+            clamp_mode=mode,
+            protocol_type=ptype,
+            protocol_params=protocol_params,
+            sweep_labels=[s.label for s in self._current_sweeps],
+            continuous=continuous,
+        )
+        self._export_neuron_name = neuron_preset
+        self._export_protocol_name = protocol_preset or ptype
+
+    def _do_apply_simulation(
+        self,
+        result: _SimResult,
+        analysis_st: "AnalysisState",
+    ) -> None:
+        """Apply a :class:`_SimResult` to self and *analysis_st*.
+
+        Core logic extracted for testability.  In production this is called
+        inside ``async with self:`` (under the Reflex state lock) immediately
+        after :func:`_compute_simulation` returns from the thread executor.
+        Tests may call it directly on bare state instances.
+
+        Args:
+            result: Computation result from :func:`_compute_simulation`.
+            analysis_st: The :class:`AnalysisState` sibling to update.
+        """
+        self._current_sweeps = result.sweeps
+        self.sim_token = result.sim_token
+        analysis_st.clear_results()
+        analysis_st.iv_data = result.iv_data
+        analysis_st.gv_data = result.gv_data
+        analysis_st.tau_v_data = result.tau_v_data
+        analysis_st.inactivation_data = result.inactivation_data
+        analysis_st.ap_metrics = result.ap_metrics
+        analysis_st.ap_summary = result.ap_summary
+        analysis_st.ap_is_multi_sweep = result.ap_is_multi_sweep
+        analysis_st.ca_transient_metrics = result.ca_transient_metrics
+        analysis_st.ca_transient_summary = result.ca_transient_summary
+        analysis_st.burst_metrics = result.burst_metrics
+        analysis_st.burst_summary = result.burst_summary
+        analysis_st.fi_data = result.fi_data
+        analysis_st.sfa_data = result.sfa_data
+        analysis_st.hyperpolarization_data = result.hyperpolarization_data
+        analysis_st.phase_plane_data = result.phase_plane_data
+        analysis_st.impedance_data = result.impedance_data
+
+    # ------------------------------------------------------------------ #
+    # Continuous simulation mode                                        #
+    # ------------------------------------------------------------------ #
+    def toggle_continuous_mode(self) -> None:
+        """Enable or disable continuous simulation mode."""
+        if self.continuous_loop_running:
+            # Signal the running loop to stop
+            self.continuous_mode = False
+        else:
+            self.continuous_mode = True
+            # Returning an event from a sync handler chains it: Reflex will
+            # dispatch run_continuous immediately after toggle_continuous_mode
+            # completes, without requiring this handler to be async.
+            return SimulationState.run_continuous  # type: ignore[return-value]
+
+    @rx.event(background=True)
+    async def export_csv(self) -> AsyncGenerator[Any, None]:
+        """Export the latest run's simulated traces as a CSV download.
+
+        The sweeps and their provenance are snapshotted under the state lock;
+        the CSV is built in a thread executor and handed to the browser over
+        the ``/api/export/{token}`` side channel, because the payload is too
+        large for the WebSocket state delta.  In continuous mode the most
+        recent iteration is exported.
+        """
+        async with self:
+            sweeps = list(self._current_sweeps)
+            metadata = list(self._export_metadata)
+            neuron_name = self._export_neuron_name or self._label_neuron_type
+            protocol_name = self._export_protocol_name or "traces"
+        if not sweeps:
+            logger.warning("CSV export requested but there is no simulation result")
+            return
+
+        loop = asyncio.get_running_loop()
+        # One timestamp for both the header and the filename.
+        now = datetime.now().astimezone()
+        metadata.insert(1, ("exported_at", now.isoformat(timespec="seconds")))
+        text = await loop.run_in_executor(None, sweeps_to_csv, sweeps, metadata)
+        payload = text.encode("utf-8")
+        filename = export_filename(neuron_name, protocol_name, now)
+        token = uuid.uuid4().hex
+        exports.put(token, filename, payload)
+        logger.info("CSV export ready: %s (%.1f MB)", filename, len(payload) / 1e6)
+
+        async with self:
+            log_st = await self.get_state(LogState)
+            log_st._refresh_logs()
+        api_url = _get_config().api_url.rstrip("/")
+        yield rx.call_script(exports.download_js(api_url, token))
+
+    @rx.event(background=True)
+    async def run_continuous(self) -> AsyncGenerator[Any, None]:
+        """Run simulations in a continuous loop until continuous_mode is False.
+
+        Each iteration picks up the terminal neuron state (voltage, gating
+        variables, Ca²⁺) from the previous iteration, giving true continuity.
+        Parameter changes made while the loop runs take effect at the start
+        of the next iteration.
+        """
+        async with self:
+            self.continuous_loop_running = True
+            self.error_message = ""
+
+        async with self:
+            proto_st = await self.get_state(ProtocolState)
+        logger.info(
+            "Continuous simulation started: mode=%s, protocol=%s",
+            proto_st.clamp_mode,
+            proto_st.protocol_type,
+        )
+        _iteration = 0
+        try:
+            while True:
+                _iter_start = time.monotonic()
+                # Snapshot all state needed for this iteration.
+                async with self:
+                    if not self.continuous_mode:
+                        break
+
+                    proto_st = await self.get_state(ProtocolState)
+                    mode = proto_st.clamp_mode
+                    ptype = proto_st.protocol_type
+                    neuron_st = await self.get_state(NeuronState)
+                    neuron = neuron_st._build_neuron()
+                    stimulus = proto_st._build_protocols()[0][0]
+                    neuron_preset = neuron_st.active_neuron_type
+                    protocol_preset = proto_st.active_protocol_preset
+                    export_params = _protocol_export_params(proto_st)
+                    prior_V = self._cont_V
+                    prior_ca_i = self._cont_ca_i
+                    stored_traces_snap = list(self.stored_traces)
+                    show_hover_snap = self.show_hover
+                    # Validate that the stored gating state is compatible with the
+                    # current neuron before choosing the from-state path.  A neuron
+                    # switch during the previous simulation iteration can leave
+                    # _cont_gating with a different set of variable names (e.g.
+                    # 'r' from an Ih channel the new neuron does not have), which
+                    # would raise KeyError inside _simulate_*_core.
+                    _cur_gv = frozenset(gv.name for gv in neuron.all_gating_variables)
+                    _stored_gv = frozenset(self._cont_gating.keys())
+                    use_prior_state = self._cont_has_state and _cur_gv == _stored_gv
+                    if self._cont_has_state and not use_prior_state:
+                        logger.warning(
+                            "Continuous mode: gating variable mismatch after "
+                            "neuron change (current=%s stored=%s) — "
+                            "restarting from steady state.",
+                            sorted(_cur_gv),
+                            sorted(_stored_gv),
+                        )
+                    prior_gating = dict(self._cont_gating) if use_prior_state else {}
+
+                    _iteration += 1
+                    logger.debug(
+                        "Continuous iteration %d: mode=%s protocol=%s "
+                        "use_prior_state=%s",
+                        _iteration,
+                        mode,
+                        ptype,
+                        use_prior_state,
+                    )
+
+                # Run simulation outside the state lock in a thread executor.
+                loop = asyncio.get_running_loop()
+                try:
+                    if mode == CURRENT_CLAMP:
+                        if use_prior_state:
+                            result = await loop.run_in_executor(
+                                None,
+                                neuroclamp.simulate_current_clamp_from_state,
+                                neuron,
+                                stimulus,
+                                prior_V,
+                                prior_gating,
+                                prior_ca_i,
+                            )
+                        else:
+                            result = await loop.run_in_executor(
+                                None,
+                                neuroclamp.simulate_current_clamp,
+                                neuron,
+                                stimulus,
+                            )
+                    else:
+                        if use_prior_state:
+                            result = await loop.run_in_executor(
+                                None,
+                                neuroclamp.simulate_voltage_clamp_from_state,
+                                neuron,
+                                stimulus,
+                                prior_gating,
+                                prior_ca_i,
+                            )
+                        else:
+                            result = await loop.run_in_executor(
+                                None,
+                                neuroclamp.simulate_voltage_clamp,
+                                neuron,
+                                stimulus,
+                            )
+                except ValueError as exc:
+                    logger.exception("Continuous simulation error: %s", exc)
+                    async with self:
+                        self.error_message = str(exc)
+                        self.continuous_mode = False
+                    break
+
+                # Extract terminal state for next iteration.
+                last_V = float(result["voltage"][-1])
+                gating_vars = {gv.name for gv in neuron.all_gating_variables}
+                gating_cols = [col for col in result.dtype.names if col in gating_vars]
+                last_gating = {col: float(result[col][-1]) for col in gating_cols}
+                last_ca_i = (
+                    float(result["ca_i"][-1]) if "ca_i" in result.dtype.names else 0.0
+                )
+
+                sweep = Sweep.from_result(result, stimulus, "", "", mode)
+
+                # Build and serialise the figure outside the state lock so that
+                # fig.to_json() does not inflate the flush time.
+                _cont_fig = build_figure(
+                    current_sweeps=[sweep],
+                    visibility=TraceVisibility(),
+                    clamp_mode=mode,
+                    stored_traces=stored_traces_snap,
+                    show_hover=show_hover_snap,
+                )
+                _cont_token = uuid.uuid4().hex
+                traces.put(_cont_token, _cont_fig)
+
+                async with self:
+                    if not self.continuous_mode:
+                        break
+                    self._current_sweeps = [sweep]
+                    self._record_export_context(
+                        neuron,
+                        neuron_preset=neuron_preset,
+                        protocol_preset=protocol_preset,
+                        mode=mode,
+                        ptype=ptype,
+                        protocol_params=export_params,
+                        continuous=True,
+                    )
+                    self.sim_token = _cont_token
+                    self._cont_V = last_V
+                    self._cont_gating = last_gating
+                    self._cont_ca_i = last_ca_i
+                    self._cont_has_state = True
+                    vis_st = await self.get_state(VisibilityState)
+
+                yield rx.call_script(self._build_fetch_figure_js(_cont_token, vis_st))
+
+                _iter_elapsed_ms = (time.monotonic() - _iter_start) * 1000
+                if _iter_elapsed_ms > 500:
+                    logger.warning(
+                        "Continuous iteration %d took %.0f ms (>500 ms threshold)",
+                        _iteration,
+                        _iter_elapsed_ms,
+                    )
+
+                # Yield to allow UI events (parameter changes) to be processed.
+                await asyncio.sleep(0)
+
+        finally:
+            async with self:
+                self.continuous_mode = False
+                self.continuous_loop_running = False
+                logger.info(
+                    "Continuous simulation stopped after %d iteration(s)", _iteration
+                )
+                log_st = await self.get_state(LogState)
+                log_st._refresh_logs()
+                vis_st = await self.get_state(VisibilityState)
+            js = self._apply_visibility_js(vis_st)
+            if js:
+                yield rx.call_script(js)
+            yield rx.call_script(_LOG_SCROLL_JS)
+
+    @rx.event(background=True)
+    async def run_simulation(self) -> AsyncGenerator[Any, None]:
+        """Build protocol and run the simulation asynchronously.
+
+        Uses background=True so the UI stays responsive during long runs.
+        All inputs are snapshotted inside the state lock before blocking work
+        begins; :func:`_compute_simulation` runs via ``run_in_executor`` so the
+        event loop can flush ``is_running=True`` to the client first; results
+        are applied under the lock via :meth:`_do_apply_simulation`.
+        """
+        async with self:
+            self.is_running = True
+            self.error_message = ""
+            self.selected_sweep = -1
+            neuron_st = await self.get_state(NeuronState)
+            neuron = neuron_st._build_neuron()
+            proto_st = await self.get_state(ProtocolState)
+            mode = proto_st.clamp_mode
+            ptype = proto_st.protocol_type
+            try:
+                protocols = proto_st._build_protocols()
+            except ValueError as exc:
+                logger.exception("Simulation error: %s", exc)
+                self.error_message = str(exc)
+                self.is_running = False
+                return
+            # Snapshot scalar protocol params so the executor call is thread-safe.
+            stored_traces_snap = list(self.stored_traces)
+            show_hover_snap = self.show_hover
+            neuron_preset = neuron_st.active_neuron_type
+            protocol_preset = proto_st.active_protocol_preset
+            export_params = _protocol_export_params(proto_st)
+            min_stimulus = proto_st.min_stimulus
+            max_stimulus = proto_st.max_stimulus
+            stimulus_step = proto_st.stimulus_step
+            pre_stimulus_duration = proto_st.pre_stimulus_duration
+            stimulus_duration = proto_st.stimulus_duration
+            start_frequency = proto_st.start_frequency
+            end_frequency = proto_st.end_frequency
+
+        logger.info("Simulation started: mode=%s, protocol=%s", mode, ptype)
+
+        _start_ms = time.monotonic() * 1000
+        _sim_result: _SimResult | None = None
+        try:
+            loop = asyncio.get_running_loop()
+            _sim_result = await loop.run_in_executor(
+                None,
+                _compute_simulation,
+                neuron,
+                protocols,
+                mode,
+                stored_traces_snap,
+                show_hover_snap,
+                min_stimulus,
+                max_stimulus,
+                stimulus_step,
+                pre_stimulus_duration,
+                stimulus_duration,
+                ptype,
+                start_frequency,
+                end_frequency,
+            )
+        except ValueError as exc:
+            logger.exception("Simulation error: %s", exc)
+            async with self:
+                self.error_message = str(exc)
+        else:
+            elapsed = time.monotonic() * 1000 - _start_ms
+            logger.info("Simulation complete: %.0f ms", elapsed)
+            async with self:
+                analysis_st = await self.get_state(AnalysisState)
+                self._do_apply_simulation(_sim_result, analysis_st)
+                self._record_export_context(
+                    neuron,
+                    neuron_preset=neuron_preset,
+                    protocol_preset=protocol_preset,
+                    mode=mode,
+                    ptype=ptype,
+                    protocol_params=export_params,
+                )
+            yield SimulationState.run_membrane_test
+        finally:
+            async with self:
+                self.is_running = False
+                log_st = await self.get_state(LogState)
+                log_st._refresh_logs()
+                vis_st = await self.get_state(VisibilityState)
+            if _sim_result is not None:
+                # Side-channel path: fetch the figure from /api/figure/{token}
+                # and swap it in via Plotly.react (includes visibility re-apply).
+                yield rx.call_script(
+                    self._build_fetch_figure_js(_sim_result.sim_token, vis_st)
+                )
+            else:
+                # Error path: no figure was produced; re-apply existing visibility.
+                js = self._apply_visibility_js(vis_st)
+                if js:
+                    yield rx.call_script(js)
+            yield rx.call_script(_LOG_SCROLL_JS)
+
+    @rx.event(background=True)
+    async def run_membrane_test_debounced(self) -> AsyncGenerator[Any, None]:
+        """Debounced entry point for slider-driven membrane test requests.
+
+        Increments ``_mt_request_id``, sleeps :data:`_MT_DEBOUNCE_S` seconds,
+        then bails out if a newer request arrived.  Otherwise yields
+        :meth:`run_membrane_test`.  Page-load and post-simulation triggers
+        call :meth:`run_membrane_test` directly and are unaffected.
+        """
+        async with self:
+            self._mt_request_id += 1
+            request_id = self._mt_request_id
+
+        await asyncio.sleep(_MT_DEBOUNCE_S)
+
+        async with self:
+            if self._mt_request_id != request_id:
+                return
+
+        yield SimulationState.run_membrane_test
+
+    @rx.event(background=True)
+    async def run_membrane_test(self) -> None:
+        """Run the dedicated membrane test protocol and cache passive properties.
+
+        Builds the neuron from current NeuronState parameters, checks whether
+        the neuron fingerprint has changed since the last run (cache hit → skip),
+        and if stale runs a fixed small hyperpolarizing current step via
+        :func:`neuroclamp.run_membrane_test`.  Results are stored in
+        ``AnalysisState.mt_*`` fields and persist across protocol and simulation
+        changes until the neuron parameters change.
+        """
+        async with self:
+            neuron_st = await self.get_state(NeuronState)
+            # Use _compute_fingerprint() rather than the @rx.var: ComputedVar
+            # values are cached by Reflex and may not yet reflect the latest
+            # state when accessed from a background task.
+            fingerprint = neuron_st._compute_fingerprint()
+            analysis_st = await self.get_state(AnalysisState)
+            if analysis_st.mt_neuron_fingerprint == fingerprint:
+                logger.debug("run_membrane_test: cache hit, skipping")
+                return
+            neuron = neuron_st._build_neuron()
+
+        loop = asyncio.get_running_loop()
+        props = await loop.run_in_executor(None, neuroclamp.run_membrane_test, neuron)
+
+        async with self:
+            # Re-read fingerprint: if neuron changed while we were computing,
+            # discard results to avoid caching stale passive properties.
+            neuron_st = await self.get_state(NeuronState)
+            current_fp = neuron_st._compute_fingerprint()
+            if current_fp != fingerprint:
+                logger.info(
+                    "run_membrane_test: neuron changed during computation, discarding"
+                )
+                return
+            analysis_st = await self.get_state(AnalysisState)
+            em_dash = "—"
+            density_r_units = "kΩ·cm²"
+            density_c_units = "µF/cm²"
+            if props is None:
+                analysis_st.mt_input_resistance = em_dash
+                analysis_st.mt_time_constant = em_dash
+                analysis_st.mt_membrane_capacitance = em_dash
+                analysis_st.mt_r_units = density_r_units
+                analysis_st.mt_c_units = density_c_units
+                analysis_st.mt_units_mode = "density"
+                analysis_st.mt_fit_converged = False
+            else:
+                analysis_st.mt_time_constant = f"{props.time_constant:.2f}"
+                analysis_st.mt_fit_converged = props.fit_converged
+                if props.input_resistance_mohm is not None:
+                    analysis_st.mt_input_resistance = (
+                        f"{props.input_resistance_mohm:.2f}"
+                    )
+                    analysis_st.mt_r_units = "MΩ"
+                    analysis_st.mt_units_mode = "absolute"
+                else:
+                    analysis_st.mt_input_resistance = f"{props.input_resistance:.2f}"
+                    analysis_st.mt_r_units = density_r_units
+                    analysis_st.mt_units_mode = "density"
+                if props.membrane_capacitance_pf is not None:
+                    analysis_st.mt_membrane_capacitance = (
+                        f"{props.membrane_capacitance_pf:.2f}"
+                    )
+                    analysis_st.mt_c_units = "pF"
+                elif props.membrane_capacitance is not None:
+                    analysis_st.mt_membrane_capacitance = (
+                        f"{props.membrane_capacitance:.2f}"
+                    )
+                    analysis_st.mt_c_units = density_c_units
+                else:
+                    analysis_st.mt_membrane_capacitance = em_dash
+                    analysis_st.mt_c_units = density_c_units
+            analysis_st.mt_neuron_fingerprint = fingerprint
+            logger.info(
+                "run_membrane_test: R_in=%s %s, τ_m=%s ms, C_m=%s %s",
+                analysis_st.mt_input_resistance,
+                analysis_st.mt_r_units,
+                analysis_st.mt_time_constant,
+                analysis_st.mt_membrane_capacitance,
+                analysis_st.mt_c_units,
+            )

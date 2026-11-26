@@ -1,4 +1,4 @@
-"""Unit tests for patch_sim.analysis.tau_v.
+"""Unit tests for neuroclamp.analysis.tau_v.
 
 Covers the exponential model functions, single/double-exp selection logic,
 and per-sweep / multi-sweep entry points using synthetic data.  Integration
@@ -9,7 +9,7 @@ tests/integration/test_tau_v_simulation.py.
 import numpy as np
 import pytest
 
-from patch_sim.analysis.tau_v import (
+from neuroclamp.analysis.tau_v import (
     analyze_tau_v,
     compute_tau_v_point,
     double_exp_decay,

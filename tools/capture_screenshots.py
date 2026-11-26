@@ -1,8 +1,10 @@
 """Capture application-documentation screenshots of the running web UI.
 
 Drives the live Reflex app with a headless browser and writes PNGs into
-``assets/screenshots/`` (served by Reflex at ``/screenshots/...`` and embedded
-in the in-app ``/help`` pages).
+``neuroclamp_ui/help_content/screenshots/``. The app copies them into
+``assets/screenshots/`` when it starts, and Reflex serves them at
+``/screenshots/...`` for the in-app ``/help`` pages. Restart the app to see
+new captures.
 
 Usage:
     1. Start the app in production mode in one terminal:
@@ -13,7 +15,7 @@ Usage:
 Production mode is recommended: the dev server's hot-reloader can restart the
 backend worker mid-run and drop the in-flight simulation. The target URL
 defaults to ``http://localhost:3000`` and can be overridden with the
-``PATCH_SIM_URL`` environment variable.
+``NEUROCLAMP_URL`` environment variable.
 """
 
 import json
@@ -29,8 +31,13 @@ from playwright.sync_api import (
     TimeoutError as PlaywrightTimeout,
 )
 
-BASE_URL = os.environ.get("PATCH_SIM_URL", "http://localhost:3000")
-OUTPUT_DIR = pathlib.Path(__file__).resolve().parents[1] / "assets" / "screenshots"
+BASE_URL = os.environ.get("NEUROCLAMP_URL", "http://localhost:3000")
+OUTPUT_DIR = (
+    pathlib.Path(__file__).resolve().parents[1]
+    / "neuroclamp_ui"
+    / "help_content"
+    / "screenshots"
+)
 
 #: Element screenshots captured after a single-sweep action-potential run.
 _ELEMENTS: list[tuple[str, str]] = [

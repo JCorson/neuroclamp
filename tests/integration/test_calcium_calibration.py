@@ -11,16 +11,16 @@ will fail whenever CalciumDynamics parameters drift outside the physiological ba
 
 import pytest
 
-from patch_sim.clamp_simulations import simulate_current_clamp
-from patch_sim.constants import (
+from neuroclamp.clamp_simulations import simulate_current_clamp
+from neuroclamp.constants import (
     CA1_PYRAMIDAL,
     PURKINJE,
     STN,
     THALAMIC_RELAY,
     TRN,
 )
-from patch_sim.presets import NEURON_PRESETS
-from patch_sim.protocols import step_current
+from neuroclamp.presets import NEURON_PRESETS
+from neuroclamp.protocols import step_current
 
 # Micromolar conversion: ca_i is stored in mM; multiply by 1000 to get µM.
 _MM_TO_UM = 1000.0

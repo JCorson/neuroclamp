@@ -1,4 +1,4 @@
-"""Unit tests for patch_sim.analysis.gv_curve.
+"""Unit tests for neuroclamp.analysis.gv_curve.
 
 Covers boltzmann() and compute_gv() with synthetic I-V data and edge cases.
 Integration tests against real HH simulations live in
@@ -8,11 +8,11 @@ tests/integration/test_gv_curve_simulation.py.
 import numpy as np
 import pytest
 
-from patch_sim.analysis.gv_curve import (
+from neuroclamp.analysis.gv_curve import (
     boltzmann,
     compute_gv,
 )
-from patch_sim.analysis.iv_curve import IVAnalysisResult, IVPoint
+from neuroclamp.analysis.iv_curve import IVAnalysisResult, IVPoint
 
 # ---------------------------------------------------------------------------
 # Helpers

@@ -1,6 +1,6 @@
 """Tests for the dedicated membrane test protocol.
 
-Covers the run_membrane_test() function in patch_sim.analysis.membrane_test
+Covers the run_membrane_test() function in neuroclamp.analysis.membrane_test
 and verifies the module-level protocol constants.
 """
 
@@ -10,15 +10,15 @@ import dataclasses
 
 import pytest
 
-import patch_sim
-from patch_sim.analysis.membrane_test import (
+import neuroclamp
+from neuroclamp.analysis.membrane_test import (
     MEMBRANE_TEST_CURRENT,
     MEMBRANE_TEST_POST_MS,
     MEMBRANE_TEST_PRE_MS,
     MEMBRANE_TEST_STEP_MS,
     run_membrane_test,
 )
-from patch_sim.neuron import Neuron
+from neuroclamp.neuron import Neuron
 
 
 def test_run_membrane_test_default_neuron(hh_model: Neuron) -> None:
@@ -47,7 +47,7 @@ def test_run_membrane_test_always_subthreshold() -> None:
     when the neuron is built with the correct channel kinetics for that preset,
     guaranteeing that the protocol always returns valid passive properties.
     """
-    for name, factory in patch_sim.NEURON_PRESETS.items():
+    for name, factory in neuroclamp.NEURON_PRESETS.items():
         neuron = factory()
         props = run_membrane_test(neuron)
         assert props is not None, (
@@ -63,7 +63,7 @@ def test_membrane_test_sensitive_to_g_leak() -> None:
     R_in = 1/(g_NaL+g_KL) exactly.  This test verifies the relationship holds
     and that R_in matches the analytical expectation.
     """
-    from patch_sim.channels import make_k_leak_channel, make_na_leak_channel
+    from neuroclamp.channels import make_k_leak_channel, make_na_leak_channel
 
     neuron_low_gl = Neuron(
         channels=(

@@ -1,4 +1,4 @@
-"""Integration tests for patch_sim.analysis.inactivation against real HH sims.
+"""Integration tests for neuroclamp.analysis.inactivation against real HH sims.
 
 Runs a two-pulse steady-state-inactivation voltage-clamp protocol through the
 full simulation pipeline and verifies that the derived h∞ curve and Boltzmann
@@ -8,9 +8,9 @@ tests/unit/test_inactivation.py.
 
 import numpy as np
 
-import patch_sim
-from patch_sim.analysis.inactivation import compute_inactivation
-from patch_sim.analysis.iv_curve import analyze_iv
+import neuroclamp
+from neuroclamp.analysis.inactivation import compute_inactivation
+from neuroclamp.analysis.iv_curve import analyze_iv
 
 
 def test_inactivation_curve_integration_hh_neuron(hh_model):
@@ -27,7 +27,7 @@ def test_inactivation_curve_integration_hh_neuron(hh_model):
     pre_ms, stim_ms = 150.0, 15.0
     min_v, max_v, step_v = -120.0, -20.0, 10.0
 
-    protocol_2d = patch_sim.build_voltage_protocol(
+    protocol_2d = neuroclamp.build_voltage_protocol(
         "Inactivation",
         sampling_frequency=40_000,
         pre_stimulus_duration=pre_ms,
@@ -43,7 +43,9 @@ def test_inactivation_curve_integration_hh_neuron(hh_model):
     protocols = [protocol_2d[i] for i in range(protocol_2d.shape[0])]
 
     results = list(
-        patch_sim.simulate_batch(hh_model, protocols, patch_sim.simulate_voltage_clamp)
+        neuroclamp.simulate_batch(
+            hh_model, protocols, neuroclamp.simulate_voltage_clamp
+        )
     )
     time = results[0]["time"]
     currents = [r["Itotal"] for r in results]

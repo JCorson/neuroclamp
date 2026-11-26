@@ -3,7 +3,7 @@
 Exercises: VC preset loading → simulate → IV/GV analysis population.
 """
 
-from patch_sim.constants import (
+from neuroclamp.constants import (
     CORTICAL_PYRAMIDAL,
     IV_CURVE,
     NA_CHANNEL_ACTIVATION,

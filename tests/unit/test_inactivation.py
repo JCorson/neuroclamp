@@ -1,4 +1,4 @@
-"""Unit tests for patch_sim.analysis.inactivation.
+"""Unit tests for neuroclamp.analysis.inactivation.
 
 Covers compute_inactivation() with synthetic I-V data and edge cases.
 Integration tests against real HH simulations live in
@@ -8,9 +8,9 @@ tests/integration/test_inactivation_simulation.py.
 import numpy as np
 import pytest
 
-from patch_sim.analysis.gv_curve import boltzmann
-from patch_sim.analysis.inactivation import compute_inactivation
-from patch_sim.analysis.iv_curve import IVAnalysisResult, IVPoint
+from neuroclamp.analysis.gv_curve import boltzmann
+from neuroclamp.analysis.inactivation import compute_inactivation
+from neuroclamp.analysis.iv_curve import IVAnalysisResult, IVPoint
 
 # ---------------------------------------------------------------------------
 # Helpers

@@ -1,4 +1,4 @@
-"""Unit tests for the patch_sim.analysis.calcium_transients module.
+"""Unit tests for the neuroclamp.analysis.calcium_transients module.
 
 Verifies calcium transient detection, peak / time-to-peak / decay-τ
 extraction, and edge-case behavior using synthetic [Ca²⁺]ᵢ traces.
@@ -11,12 +11,12 @@ from typing import cast
 import numpy as np
 import pytest
 
-from patch_sim.analysis.calcium_transients import (
+from neuroclamp.analysis.calcium_transients import (
     CalciumTransientAnalysisResult,
     analyze_calcium_transients,
     analyze_calcium_transients_from_result,
 )
-from patch_sim.clamp_simulations import SimulationResult
+from neuroclamp.clamp_simulations import SimulationResult
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -262,7 +262,7 @@ def test_baseline_drift_does_not_block_detection():
 def test_fallback_tau_used_when_decay_window_too_short_for_curve_fit():
     """Direct unit test of `_fit_decay`: short window forces 1/e fallback.
 
-    Tests the private :func:`patch_sim.analysis.calcium_transients._fit_decay`
+    Tests the private :func:`neuroclamp.analysis.calcium_transients._fit_decay`
     helper directly because the public path requires pathological input to
     create a sub-`_MIN_DECAY_SAMPLES` decay window.  The fallback contract:
     when the window is too short, ``curve_fit`` is skipped, ``converged``
@@ -270,7 +270,7 @@ def test_fallback_tau_used_when_decay_window_too_short_for_curve_fit():
     never crosses 1/e).  This pins the fallback path so a future refactor
     that silently drops it will fail the test.
     """
-    from patch_sim.analysis.calcium_transients import _fit_decay
+    from neuroclamp.analysis.calcium_transients import _fit_decay
 
     # 4 samples (< _MIN_DECAY_SAMPLES = 5) with a clean 1/e crossing.
     t_decay = np.array([0.0, 0.025, 0.05, 0.1])
@@ -304,7 +304,7 @@ def test_runaway_tau_is_rejected_for_short_decay_windows():
     # ca(t) = baseline + (peak - baseline) * exp(-t / 100)
     ca_decay = baseline_uM + (peak_uM - baseline_uM) * np.exp(-t_decay / 100.0)
 
-    from patch_sim.analysis.calcium_transients import _fit_decay
+    from neuroclamp.analysis.calcium_transients import _fit_decay
 
     tau, converged = _fit_decay(t_decay, ca_decay, peak_uM, baseline_uM)
     # The fit can either succeed with a reasonable τ (the synthetic data is
@@ -317,7 +317,7 @@ def test_runaway_tau_is_rejected_for_short_decay_windows():
 
 def test_fallback_returns_none_when_trace_never_decays_below_one_over_e():
     """Direct unit test: short window without a 1/e crossing → τ is None."""
-    from patch_sim.analysis.calcium_transients import _fit_decay
+    from neuroclamp.analysis.calcium_transients import _fit_decay
 
     t_decay = np.array([0.0, 0.025, 0.05, 0.1])
     peak_uM = 1.0

@@ -11,7 +11,7 @@ Lives in ``_ap_shape.py`` (leading underscore = test-internal) rather than
 plugins; importing plain functions from it is an anti-pattern.
 """
 
-from patch_sim.analysis.ap_metrics import APAnalysisResult
+from neuroclamp.analysis.ap_metrics import APAnalysisResult
 
 _Band = tuple[float, float]
 
@@ -36,8 +36,8 @@ def assert_ap_shape(
     new paper.
 
     Args:
-        ap_result: Output of :func:`~patch_sim.analysis.ap_metrics.analyze_aps`
-            or :func:`~patch_sim.analysis.ap_metrics.analyze_aps_from_result`.
+        ap_result: Output of :func:`~neuroclamp.analysis.ap_metrics.analyze_aps`
+            or :func:`~neuroclamp.analysis.ap_metrics.analyze_aps_from_result`.
         reference: Literature citation (e.g. ``"McCormick et al. 1985"``);
             included in every failure message.
         half_width_ms: Acceptable mean half-width band in ms.

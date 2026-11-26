@@ -5,7 +5,7 @@ import math
 import numpy as np
 import pytest
 
-from patch_sim.utils import safe_cosh, safe_exp
+from neuroclamp.utils import safe_cosh, safe_exp
 
 
 class TestSafeExp:

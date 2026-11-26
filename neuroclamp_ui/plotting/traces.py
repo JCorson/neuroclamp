@@ -1,0 +1,743 @@
+"""Main multi-axis trace figure plus visibility-flag bookkeeping.
+
+Holds :class:`TraceVisibility`, :func:`compute_trace_visibility_map`,
+:func:`build_figure`, and the private hover-table helper.  Pure functions —
+no Reflex dependency.
+"""
+
+from dataclasses import dataclass, field
+
+import numpy as np
+import plotly.graph_objects as go
+from plotly.subplots import make_subplots
+
+from neuroclamp_ui.channels import CHANNELS
+from neuroclamp_ui.constants import (
+    CC_VOLTAGE_COLOR,
+    CHANNEL_COLORS,
+    CURRENT_CLAMP,
+    GATING_VAR_COLORS,
+    STIMULUS_COLOR,
+    STORED_TRACE_COLORS,
+    VOLTAGE_CLAMP,
+)
+from neuroclamp_ui.sweep import Sweep
+
+# Pre-built ``column_name → "I_<current_key>"`` lookup so traces and hover
+# tables get their display labels from the registry rather than hand-rolled
+# string surgery.  Falls back to ``f"I_{column_name}"`` for unknown keys.
+_CURRENT_LABELS: dict[str, str] = {ch.column_name: ch.current_label for ch in CHANNELS}
+
+# Maximum number of hover carrier points; keeps tooltip HTML build time short.
+_MAX_HOVER_POINTS = 2000
+
+# Hover tooltip column width in characters.
+_HOVER_COL_WIDTH = 8
+
+# Inline CSS applied to hover tooltip ``<span>`` elements.
+_HOVER_MONO_STYLE = "font-family: monospace; font-size: 11px;"
+
+# Relative row heights for the 3-row subplot layout (response, gating, stimulus).
+_SUBPLOT_ROW_HEIGHTS = [0.5, 0.25, 0.25]
+
+# Vertical gap between subplot rows (fraction of total figure height).
+_SUBPLOT_VERT_SPACING = 0.08
+
+# Line width used for the total-current trace in Voltage Clamp mode.
+_TOTAL_CURRENT_LINE_WIDTH = 4
+
+# Plot margin in pixels: left, right, top, bottom.
+_PLOT_MARGIN = {"l": 60, "r": 20, "t": 30, "b": 40}
+
+
+@dataclass
+class TraceVisibility:
+    """Visibility flags for every plotted trace.
+
+    All bool flags default to ``True`` so callers only need to supply the
+    flags they want to override.  Channel-current and channel-gating dicts
+    are empty by default, which ``build_figure`` and
+    ``_build_hover_tables`` treat as "show all".
+
+    Attributes:
+        voltage: Show the membrane voltage trace (Current Clamp).
+        total_current: Show the summed ion current trace (Voltage Clamp).
+        channel_currents: Visibility flags for per-channel currents, keyed
+            by simulation column name (``"INa"``, ``"IK"``, ``"INaL"``,
+            ``"IKL"``, ``"Ih"``, ``"IKv31"``, …).
+        channel_gating: Visibility flags for per-channel gating variables,
+            keyed by gate name (``"n"``, ``"m"``, ``"h"``, ``"sNa12"``,
+            ``"r"``, ``"a"``, …).
+    """
+
+    voltage: bool = True
+    total_current: bool = True
+    channel_currents: dict[str, bool] = field(default_factory=dict)
+    channel_gating: dict[str, bool] = field(default_factory=dict)
+
+
+def _build_hover_tables(
+    current_sweeps: list[Sweep],
+    visibility: TraceVisibility,
+    add_current_keys: list[str],
+    add_gating_keys: list[str],
+    is_vc: bool,
+    stride: int,
+) -> tuple[list[str], list[str], list[str]]:
+    """Build per-time-point HTML table strings for multi-sweep hover tooltips.
+
+    For each downsampled time point, produces a monospace HTML table showing
+    all sweeps as rows and visible quantities as columns — one table string
+    per subplot (response, gating, stimulus).
+
+    Args:
+        current_sweeps: The N sweeps from the multi-sweep run.
+        visibility: Consolidated trace visibility flags.
+        add_current_keys: Ordered list of additional current channel names.
+        add_gating_keys: Ordered list of additional gating variable names.
+        is_vc: True when in Voltage Clamp mode.
+        stride: Downsampling stride — every Nth time point is included.
+
+    Returns:
+        A 3-tuple of ``(resp_html, gating_html, stim_html)``, each a list of
+        HTML strings, one per downsampled time point.
+    """
+    time_vals = current_sweeps[0].time
+    indices = np.arange(0, len(time_vals), stride)
+    n_pts = len(indices)
+    col_w = _HOVER_COL_WIDTH
+    label_w = max((len(s.label) for s in current_sweeps), default=6)
+    mono_style = _HOVER_MONO_STYLE
+    n_sweeps = len(current_sweeps)
+    # Pre-compute padded labels once — reused across all subplots.
+    labels = [f"{s.label:<{label_w}}" for s in current_sweeps]
+
+    def _fmt_table(header: str, row_groups: list[list[str]]) -> list[str]:
+        """Format a list of HTML table strings from per-time-point row groups.
+
+        Args:
+            header: The fixed header row string shared across all time points.
+            row_groups: One list of row strings per time point.
+
+        Returns:
+            List of HTML strings, one per time point.
+        """
+        return [
+            f'<span style="{mono_style}">{header}<br>{"<br>".join(rows)}</span>'
+            for rows in row_groups
+        ]
+
+    def _build_rows_html(
+        cols: list[tuple[str, str, str]],
+        fmt_spec: str,
+    ) -> list[str]:
+        """Build per-time-point HTML for one subplot given column specs.
+
+        Pre-extracts all column data into a numpy array and downsamples once
+        with fancy indexing, eliminating per-element ``getattr`` and
+        ``dict.get`` calls from the inner loop.
+
+        Closes over ``indices``, ``current_sweeps``, ``col_w``, ``label_w``,
+        ``n_pts``, ``n_sweeps``, ``labels``, and ``_fmt_table``.
+
+        Args:
+            cols: Column spec triples ``(header_label, attr, key)``.
+                ``attr`` is either a ``Sweep`` scalar attribute (``"voltage"``,
+                ``"total_current"``) or the name of a ``Sweep`` dict attribute
+                (``"channel_currents"``, ``"channel_gating"``).  When ``attr``
+                names a dict, ``key`` is the lookup key; plain attributes use
+                an empty ``key``.
+            fmt_spec: Python format spec for numeric values (e.g. ``".2f"``).
+
+        Returns:
+            List of HTML strings, one per time point, or a list of empty
+            strings when ``cols`` is empty.
+        """
+        if not cols:
+            return [""] * n_pts
+        header = " " * label_w + "".join(f"{c[0]:>{col_w}}" for c in cols)
+        # Pre-extract every column into a (n_sweeps, n_hover_pts) array.
+        # Downsampling via fancy indexing is done once per column rather than
+        # per time-point, eliminating getattr/dict.get from the inner loop.
+        col_arrays: list[np.ndarray] = []
+        for _, attr, key in cols:
+            if key:
+                raw = np.array(
+                    [getattr(s, attr).get(key, []) for s in current_sweeps],
+                    dtype=float,
+                )
+            else:
+                raw = np.array([getattr(s, attr) for s in current_sweeps], dtype=float)
+            col_arrays.append(raw[:, indices])  # (n_sweeps, n_hover_pts)
+        # Stack and transpose to (n_hover_pts, n_sweeps, n_cols) for time-first
+        # iteration — each slice data_t[t] is (n_sweeps, n_cols).
+        # Convert to a nested Python list via .tolist() so that inner
+        # iteration works on Python floats rather than numpy scalars,
+        # avoiding per-element boxing overhead.
+        data_py: list[list[list[float]]] = (
+            np.stack(col_arrays).transpose(2, 1, 0).tolist()
+        )
+        row_groups = [
+            [
+                labels[s] + "".join(f"{v:>{col_w}{fmt_spec}}" for v in data_py[t][s])
+                for s in range(n_sweeps)
+            ]
+            for t in range(n_pts)
+        ]
+        return _fmt_table(header, row_groups)
+
+    # --- Response subplot (row 1) ---
+    # Col spec: (header_label, attr, key).  Per-channel currents live in the
+    # ``channel_currents`` dict on ``Sweep`` keyed by simulation column name;
+    # a key absent from the dict (e.g. ``"IK"`` on Cortical Pyramidal which
+    # omits the ``"K"`` channel since #320) is silently skipped here.
+    if is_vc:
+        resp_cols: list[tuple[str, str, str]] = []
+        first = current_sweeps[0]
+        if visibility.total_current and first.total_current:
+            resp_cols.append(("I_total", "total_current", ""))
+        for ch_name in add_current_keys:
+            if visibility.channel_currents.get(ch_name, True):
+                label = _CURRENT_LABELS.get(ch_name, f"I_{ch_name}")
+                resp_cols.append((label, "channel_currents", ch_name))
+    else:
+        resp_cols = [("V (mV)", "voltage", "")]
+
+    resp_html = _build_rows_html(resp_cols, ".2f")
+
+    # --- Gating subplot (row 2) ---
+    # Per-channel gates live in ``channel_gating`` keyed by gate name.
+    # Gates absent from the active preset are simply not in the dict.
+    gating_cols: list[tuple[str, str, str]] = []
+    for gv_name in add_gating_keys:
+        if visibility.channel_gating.get(gv_name, True):
+            gating_cols.append((gv_name, "channel_gating", gv_name))
+
+    gating_html = _build_rows_html(gating_cols, ".3f")
+
+    # --- Stimulus subplot (row 3) ---
+    stim_col_label = "Cmd (mV)" if is_vc else "Stim"
+    stim_header = " " * label_w + f"{stim_col_label:>{col_w}}"
+    # Pre-extract stimulus arrays and downsample once: (n_sweeps, n_hover_pts).
+    # .tolist() converts to Python floats before the formatting loop.
+    stim_raw = np.array([s.stimulus for s in current_sweeps], dtype=float)
+    stim_py: list[list[float]] = stim_raw[:, indices].T.tolist()
+    stim_row_groups = [
+        [labels[s] + f"{stim_py[t][s]:>{col_w}.2f}" for s in range(n_sweeps)]
+        for t in range(n_pts)
+    ]
+    stim_html = _fmt_table(stim_header, stim_row_groups)
+
+    return resp_html, gating_html, stim_html
+
+
+def compute_trace_visibility_map(
+    current_sweeps: list[Sweep],
+    clamp_mode: str,
+    additional_current_field_map: dict[str, str] | None = None,
+    additional_gating_field_map: dict[str, str] | None = None,
+    stored_traces: list[Sweep] | None = None,
+) -> dict[str, list[int]]:
+    """Return a mapping from show_* field names to Plotly trace indices.
+
+    Mirrors the trace-insertion order used by ``build_figure`` so callers can
+    toggle individual traces via ``Plotly.restyle`` without rebuilding the
+    figure.  Only current-sweep traces controlled by a ``show_*`` field are
+    mapped; stored traces and carrier traces advance the counter but are not
+    included (they are always visible).
+
+    Args:
+        current_sweeps: Latest simulation result sweeps.
+        clamp_mode: Active UI clamp mode (CURRENT_CLAMP or VOLTAGE_CLAMP).
+        additional_current_field_map: Optional mapping from per-channel
+            current keys (e.g. ``"INa"``, ``"Ih"``) to ``show_*`` field names
+            (e.g. ``"show_na_current"``, ``"show_ih_current"``).  Keys
+            absent from the map advance the index counter but are not
+            recorded.
+        additional_gating_field_map: Optional mapping from gating-variable
+            names (e.g. ``"n"``, ``"r"``, ``"sNa12"``) to ``show_*`` field
+            names (e.g. ``"show_k_gating"``, ``"show_ih_gating"``).  Keys
+            absent from the map advance the index counter but are not
+            recorded.
+        stored_traces: Oscilloscope-style stored reference traces.  Always
+            visible; their indices are not recorded in the result map.
+
+    Returns:
+        Dict mapping each ``show_*`` field name to the list of Plotly trace
+        indices it controls.  When the same field controls one trace per sweep
+        (e.g. multi-sweep Step) the list contains one index per sweep.
+    """
+    result: dict[str, list[int]] = {}
+    idx = 0
+    add_curr = additional_current_field_map or {}
+    add_gating = additional_gating_field_map or {}
+    is_multi_sweep = len(current_sweeps) > 1
+
+    def _map(field: str) -> None:
+        """Record the current index under field and advance the counter."""
+        nonlocal idx
+        result.setdefault(field, []).append(idx)
+        idx += 1
+
+    def _skip() -> None:
+        """Advance the trace index counter without recording a mapping."""
+        nonlocal idx
+        idx += 1
+
+    for sweep in current_sweeps:
+        if sweep.clamp_mode == CURRENT_CLAMP:
+            _map("show_voltage")
+        else:
+            # Voltage Clamp: matches _add_vc_currents insertion order — the
+            # total current followed by every channel in ``channel_currents``.
+            _map("show_total_current")
+            for ch_name in sweep.channel_currents:
+                field = add_curr.get(ch_name)
+                if field:
+                    _map(field)
+                else:
+                    _skip()
+
+        # Gating row is always present in both modes.  Every gate that the
+        # active preset's channels produce maps to its joint per-channel
+        # ``show_<id>_gating`` toggle via ``GATING_FIELD_MAP``.
+        for gv_name in sweep.channel_gating:
+            field = add_gating.get(gv_name)
+            if field:
+                _map(field)
+            else:
+                _skip()
+
+        _skip()  # stimulus — always visible, no show_* field
+
+    for sweep in stored_traces or []:
+        # Stored traces are always visible; just advance the counter.
+        if sweep.clamp_mode == CURRENT_CLAMP:
+            _skip()  # voltage
+        else:
+            _skip()  # total_current
+        _skip()  # stimulus
+
+    # Invisible hover-carrier traces in multi-sweep mode — always visible.
+    if is_multi_sweep and current_sweeps:
+        for _ in range(3):
+            _skip()
+
+    return result
+
+
+def build_figure(
+    current_sweeps: list[Sweep],
+    visibility: TraceVisibility,
+    clamp_mode: str,
+    stored_traces: list[Sweep] | None = None,
+    show_hover: bool = True,
+) -> go.Figure:
+    """Build a Plotly figure from current sweeps and stored reference traces.
+
+    Current sweeps are rendered with visibility-flag filtering applied via
+    Plotly's ``visible`` property so that the subplot layout remains fixed
+    regardless of which traces are toggled.  This allows ``react-plotly.js``
+    to use the efficient ``Plotly.react()`` path instead of a full rebuild.
+
+    Stored traces are oscilloscope-style background reference snapshots,
+    rendered with dashed faded lines; only voltage (CC) or total_current (VC)
+    and stimulus are plotted.
+
+    Both **Current Clamp** and **Voltage Clamp** use a fixed 3-row layout.
+    In Voltage Clamp mode all ion current channels are overlaid on a single
+    subplot (row 1) with each channel identified by a fixed color from
+    ``CHANNEL_COLORS`` and a legend entry.
+
+    When there are multiple current sweeps (multi-sweep mode), hover on all
+    real traces is suppressed and replaced with invisible carrier traces that
+    display a monospace HTML table — sweeps as rows, quantities as columns —
+    via ``hovertemplate``/``customdata``.  Single-sweep modes keep the
+    standard ``hovermode="x unified"`` behavior.
+
+    Args:
+        current_sweeps: Latest simulation result (1 sweep for standard runs,
+            N sweeps for multi-sweep Step).
+        visibility: Consolidated trace visibility flags.
+        clamp_mode: Active UI clamp mode, used for layout and axis labels.
+        stored_traces: Oscilloscope-style stored reference traces; rendered as
+            faded dashed lines behind the live traces.
+        show_hover: When ``True`` (default) the figure's ``hovermode`` is set
+            to ``"x"`` (multi-sweep) or ``"x unified"`` (single-sweep).  When
+            ``False``, ``hovermode`` is set to ``False`` to suppress tooltips.
+
+    Returns:
+        A Plotly Figure with response, gating, and stimulus subplots.
+    """
+    # Collect per-channel keys present in current sweeps.
+    add_gating_keys: list[str] = []
+    add_current_keys: list[str] = []
+    for sweep in current_sweeps:
+        for key in sweep.channel_gating:
+            if key not in add_gating_keys:
+                add_gating_keys.append(key)
+        for key in sweep.channel_currents:
+            if key not in add_current_keys:
+                add_current_keys.append(key)
+
+    is_vc = clamp_mode == VOLTAGE_CLAMP
+    is_multi_sweep = len(current_sweeps) > 1
+
+    # Both modes use a fixed 3-row layout.
+    rows = 3
+    row_heights = _SUBPLOT_ROW_HEIGHTS
+    gating_row = 2
+    stimulus_row = 3
+
+    vert_spacing = _SUBPLOT_VERT_SPACING if rows > 1 else 0.0
+    fig = make_subplots(
+        rows=rows,
+        cols=1,
+        shared_xaxes=True,
+        row_heights=row_heights,
+        vertical_spacing=vert_spacing,
+    )
+
+    # legend_entries[row] accumulates trace indices for traces shown in the
+    # legend.  After all traces are added we suppress the legend for any row
+    # that ended up with only one entry (y-axis label is sufficient there).
+    legend_entries: dict[int, list[int]] = {1: [], gating_row: []}
+
+    def _scatter(
+        x,
+        y,
+        name,
+        row,
+        color=None,
+        visible=True,
+        dash=None,
+        width=None,
+        hoverinfo=None,
+        showlegend=True,
+        legend_ref: str = "legend",
+        sweep_index: int = -1,
+    ):
+        """Add a Scattergl trace to the figure.
+
+        Args:
+            x: X-axis data values.
+            y: Y-axis data values.
+            name: Trace name shown in the legend / hover.
+            row: Subplot row number (1-based).
+            color: Line color string; ``None`` lets Plotly choose.
+            visible: Whether the trace is initially visible.
+            dash: Line dash style (e.g. ``"dash"``); ``None`` for solid.
+            width: Line width in pixels; ``None`` uses the default.
+            hoverinfo: Plotly hoverinfo value (e.g. ``"skip"``); ``None``
+                uses the default.
+            showlegend: Whether this trace appears in the legend.
+            legend_ref: Which Plotly legend object this trace belongs to
+                (``"legend"`` for the response row, ``"legend2"`` for the
+                gating row).
+            sweep_index: Index of the sweep this trace belongs to.  ``-1``
+                marks non-sweep traces (saved, stored, carrier).
+        """
+        line: dict = {"color": color} if color is not None else {}
+        if dash is not None:
+            line["dash"] = dash
+        if width is not None:
+            line["width"] = width
+        kwargs: dict = {}
+        if hoverinfo is not None:
+            kwargs["hoverinfo"] = hoverinfo
+        trace_idx = len(fig.data)
+        if showlegend and row in legend_entries:
+            legend_entries[row].append(trace_idx)
+        fig.add_trace(
+            go.Scattergl(
+                x=np.asarray(x),
+                y=np.asarray(y),
+                name=name,
+                mode="lines",
+                line=line,
+                visible=visible,
+                showlegend=showlegend,
+                legend=legend_ref,
+                meta={"sweep": sweep_index},
+                **kwargs,
+            ),
+            row=row,
+            col=1,
+        )
+
+    def _add_vc_currents(
+        sweep: Sweep,
+        pfx: str,
+        dash: str | None = None,
+        hoverinfo: str | None = None,
+        visibility: TraceVisibility | None = None,
+        showlegend: bool = True,
+        legend_ref: str = "legend",
+        sweep_index: int = -1,
+    ) -> None:
+        """Add Voltage Clamp current traces for one sweep to the figure.
+
+        Plots the summed total current followed by every per-channel
+        current present on the sweep, in the order they appear in
+        ``sweep.channel_currents``.
+
+        Args:
+            sweep: The sweep whose current data to plot.
+            pfx: Label prefix prepended to each trace name.
+            dash: Line dash style (e.g. ``"dash"``); ``None`` for solid.
+            hoverinfo: Plotly hoverinfo value; ``None`` uses the default.
+            visibility: Trace visibility flags; ``None`` treats every trace
+                as visible.
+            showlegend: Whether these traces appear in the legend.
+            legend_ref: Which Plotly legend object these traces belong to.
+            sweep_index: Index of the sweep this trace belongs to.  ``-1``
+                marks non-sweep traces (saved, stored, carrier).
+        """
+        total_vis = visibility.total_current if visibility is not None else True
+        _scatter(
+            sweep.time,
+            sweep.total_current,
+            f"{pfx}I_total",
+            1,
+            CHANNEL_COLORS.get("total_current"),
+            visible=total_vis,
+            width=_TOTAL_CURRENT_LINE_WIDTH,
+            dash=dash,
+            hoverinfo=hoverinfo,
+            showlegend=showlegend,
+            legend_ref=legend_ref,
+            sweep_index=sweep_index,
+        )
+        for ch_name, vals in sweep.channel_currents.items():
+            vis = (
+                visibility.channel_currents.get(ch_name, True)
+                if visibility is not None
+                else True
+            )
+            label = _CURRENT_LABELS.get(ch_name, f"I_{ch_name}")
+            _scatter(
+                sweep.time,
+                vals,
+                f"{pfx}{label}",
+                1,
+                CHANNEL_COLORS.get(ch_name),
+                visible=vis,
+                dash=dash,
+                hoverinfo=hoverinfo,
+                showlegend=showlegend,
+                legend_ref=legend_ref,
+                sweep_index=sweep_index,
+            )
+
+    # In multi-sweep mode all real traces suppress hover; carrier traces
+    # deliver the table tooltips instead.
+    hi = "skip" if is_multi_sweep else None
+
+    for sweep_idx, sweep in enumerate(current_sweeps):
+        t = sweep.time
+        sweep_mode = sweep.clamp_mode
+        pfx = f"{sweep.label} " if sweep.label else ""
+        stim_label = (
+            "Stimulus (µA/cm²)" if sweep_mode == CURRENT_CLAMP else "Command (mV)"
+        )
+        # Show legend only for the first sweep; subsequent sweeps share the
+        # same colors so their legend entries would be duplicates.
+        sl = sweep_idx == 0
+
+        if sweep_mode == CURRENT_CLAMP:
+            _scatter(
+                t,
+                sweep.voltage,
+                f"{pfx}Voltage (mV)",
+                1,
+                CC_VOLTAGE_COLOR,
+                visible=visibility.voltage,
+                hoverinfo=hi,
+                showlegend=sl,
+                sweep_index=sweep_idx,
+            )
+        else:
+            # Voltage Clamp: all currents overlaid on row 1 with channel colors.
+            # Legend-eligible traces (first sweep) use an empty prefix so the
+            # voltage-clamp command level doesn't appear in the legend label
+            # (e.g. "I_total" not "100 mV I_total").  Individual hover is
+            # suppressed in multi-sweep mode anyway, so the name is legend-only.
+            vc_pfx = "" if sl else pfx
+            _add_vc_currents(
+                sweep,
+                vc_pfx,
+                hoverinfo=hi,
+                visibility=visibility,
+                showlegend=sl,
+                sweep_index=sweep_idx,
+            )
+
+        # Gating row is always present; traces are always added with their
+        # visibility flags so the layout never changes on toggle.  All
+        # gating traces use bare variable names regardless of sweep so the
+        # legend always shows "n", "m", "h", "sNa12", … — never a stimulus
+        # prefix.
+        for gv_name, gv_vals in sweep.channel_gating.items():
+            vis = visibility.channel_gating.get(gv_name, True)
+            _scatter(
+                t,
+                gv_vals,
+                gv_name,
+                gating_row,
+                GATING_VAR_COLORS.get(gv_name),
+                visible=vis,
+                hoverinfo=hi,
+                showlegend=sl,
+                legend_ref="legend2",
+                sweep_index=sweep_idx,
+            )
+
+        _scatter(
+            t,
+            sweep.stimulus,
+            stim_label,
+            stimulus_row,
+            STIMULUS_COLOR,
+            hoverinfo=hi,
+            showlegend=False,
+            sweep_index=sweep_idx,
+        )
+
+    for i, sweep in enumerate(stored_traces or []):
+        c = sweep.color or STORED_TRACE_COLORS[i % len(STORED_TRACE_COLORS)]
+        label = sweep.label or f"Stored {i + 1}"
+        if sweep.clamp_mode == CURRENT_CLAMP:
+            _scatter(
+                sweep.time,
+                sweep.voltage,
+                label,
+                1,
+                c,
+                dash="dash",
+                hoverinfo="skip",
+            )
+        else:
+            _scatter(
+                sweep.time,
+                sweep.total_current,
+                label,
+                1,
+                c,
+                dash="dash",
+                hoverinfo="skip",
+            )
+        _scatter(
+            sweep.time,
+            sweep.stimulus,
+            label,
+            stimulus_row,
+            c,
+            dash="dash",
+            hoverinfo="skip",
+            showlegend=False,
+        )
+
+    # Add invisible hover carrier traces for multi-sweep mode.
+    # Each carrier sits on one subplot and delivers a per-time-point HTML
+    # table via customdata / hovertemplate.
+    if is_multi_sweep and current_sweeps:
+        first = current_sweeps[0]
+        time_vals = first.time
+        n_t = len(time_vals)
+        stride = max(1, n_t // _MAX_HOVER_POINTS)
+        indices = np.arange(0, n_t, stride)
+        carrier_x = np.asarray(time_vals)[indices]
+
+        resp_html, gating_html, stim_html = _build_hover_tables(
+            current_sweeps=current_sweeps,
+            visibility=visibility,
+            add_current_keys=add_current_keys,
+            add_gating_keys=add_gating_keys,
+            is_vc=is_vc,
+            stride=stride,
+        )
+
+        # Carrier y values mirror the first sweep so autorange is unaffected.
+        # Pick the first non-empty gating attribute so presets that omit the
+        # ``n`` gate (e.g. Cortical Pyramidal, STN since #320) still produce
+        # a valid carrier; fall back to zeros if no gating column exists.
+        if is_vc:
+            carrier_y1 = np.asarray(first.total_current)[indices]
+        else:
+            carrier_y1 = np.asarray(first.voltage)[indices]
+        for _gating_data in first.channel_gating.values():
+            if _gating_data:
+                carrier_y_gating = np.asarray(_gating_data)[indices]
+                break
+        else:
+            carrier_y_gating = np.zeros_like(carrier_x)
+        carrier_y_stim = np.asarray(first.stimulus)[indices]
+
+        transparent = dict(color="rgba(0,0,0,0)")
+        for carrier_y, html_strings, sub_row in (
+            (carrier_y1, resp_html, 1),
+            (carrier_y_gating, gating_html, gating_row),
+            (carrier_y_stim, stim_html, stimulus_row),
+        ):
+            fig.add_trace(
+                go.Scattergl(
+                    x=carrier_x,
+                    y=carrier_y,
+                    mode="lines",
+                    line=transparent,
+                    showlegend=False,
+                    hovertemplate="%{customdata}<extra></extra>",
+                    customdata=html_strings,
+                    name="",
+                    meta={"sweep": -1},
+                ),
+                row=sub_row,
+                col=1,
+            )
+
+    # Suppress legend for any subplot row that has only one entry — the
+    # y-axis label is sufficient in that case.
+    for row_traces in legend_entries.values():
+        if len(row_traces) <= 1:
+            for idx in row_traces:
+                fig.data[idx].showlegend = False
+
+    # Y-axis labels.
+    if is_vc:
+        fig.update_yaxes(title_text="Current (µA/cm²)", row=1, col=1)
+        fig.update_yaxes(title_text="Voltage (mV)", row=stimulus_row, col=1)
+    else:
+        fig.update_yaxes(title_text="Voltage (mV)", row=1, col=1)
+        fig.update_yaxes(title_text="Current (µA/cm²)", row=stimulus_row, col=1)
+
+    # Gating row is always present in both modes.
+    fig.update_yaxes(title_text="Gating", row=gating_row, col=1, range=[0, 1])
+
+    fig.update_xaxes(title_text="Time (ms)", row=stimulus_row, col=1)
+
+    # Compute paper-coordinate y of the top of each subplot row so each
+    # legend can be anchored inside its own subplot.
+    _scale = (1.0 - (rows - 1) * vert_spacing) / sum(_SUBPLOT_ROW_HEIGHTS)
+    _row1_top = 1.0
+    _row2_top = _row1_top - _SUBPLOT_ROW_HEIGHTS[0] * _scale - vert_spacing
+
+    _legend_common = dict(
+        orientation="v",
+        x=0.99,
+        xanchor="right",
+        bgcolor="rgba(255,255,255,0.7)",
+        borderwidth=0,
+    )
+
+    hovermode: str | bool = (
+        ("x" if is_multi_sweep else "x unified") if show_hover else False
+    )
+    fig.update_layout(
+        autosize=True,
+        margin=_PLOT_MARGIN,
+        hovermode=hovermode,
+        showlegend=True,
+        legend=dict(**_legend_common, y=_row1_top, yanchor="top"),
+        legend2=dict(**_legend_common, y=_row2_top, yanchor="top"),
+    )
+    return fig

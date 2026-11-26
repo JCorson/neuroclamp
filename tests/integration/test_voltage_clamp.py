@@ -3,9 +3,9 @@
 import numpy as np
 import pytest
 
-from patch_sim.channels import alpha_h, alpha_m, alpha_n, beta_h, beta_m, beta_n
-from patch_sim.clamp_simulations import simulate_voltage_clamp
-from patch_sim.presets import make_squid_giant_axon
+from neuroclamp.channels import alpha_h, alpha_m, alpha_n, beta_h, beta_m, beta_n
+from neuroclamp.clamp_simulations import simulate_voltage_clamp
+from neuroclamp.presets import make_squid_giant_axon
 
 
 def test_simulate_voltage_clamp_returns_structured_array(hh_model):

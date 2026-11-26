@@ -1,16 +1,16 @@
 """Integration tests for the protocol → simulation pipeline.
 
-Each test generates a stimulus protocol via patch_sim.protocols and feeds it
+Each test generates a stimulus protocol via neuroclamp.protocols and feeds it
 directly into simulate_current_clamp() or simulate_voltage_clamp(), exercising
 the full end-to-end workflow rather than either component in isolation.
 """
 
 import numpy as np
 
-from patch_sim.clamp_simulations import simulate_current_clamp, simulate_voltage_clamp
-from patch_sim.neuron import Neuron
-from patch_sim.presets import make_squid_giant_axon
-from patch_sim.protocols import (
+from neuroclamp.clamp_simulations import simulate_current_clamp, simulate_voltage_clamp
+from neuroclamp.neuron import Neuron
+from neuroclamp.presets import make_squid_giant_axon
+from neuroclamp.protocols import (
     chirp_current,
     noise_current,
     pulse_train,

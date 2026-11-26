@@ -8,11 +8,9 @@
 !rxconfig.py
 # Not read by the app; shipped so the published image carries the GPL text.
 !LICENSE
-!patch_sim/
-!patch_sim_ui/
-!assets/
+!neuroclamp/
+!neuroclamp_ui/
 
 # Generated or cached content inside the allowed paths.
 **/__pycache__
 **/*.py[cod]
-assets/external

@@ -2,8 +2,8 @@
 
 import pytest
 
-from patch_sim.neuron import Neuron
-from patch_sim.presets import make_squid_giant_axon
+from neuroclamp.neuron import Neuron
+from neuroclamp.presets import make_squid_giant_axon
 
 
 @pytest.fixture

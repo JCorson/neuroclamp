@@ -1,4 +1,4 @@
-"""Unit tests for patch_sim.analysis.iv_curve.
+"""Unit tests for neuroclamp.analysis.iv_curve.
 
 Covers compute_iv_point and analyze_iv with synthetic data and edge cases.
 Integration tests against real HH simulations live in
@@ -8,7 +8,7 @@ tests/integration/test_iv_curve_simulation.py.
 import numpy as np
 import pytest
 
-from patch_sim.analysis.iv_curve import (
+from neuroclamp.analysis.iv_curve import (
     IVAnalysisResult,
     IVPoint,
     analyze_iv,

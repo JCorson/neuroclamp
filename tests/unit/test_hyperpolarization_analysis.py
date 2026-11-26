@@ -1,4 +1,4 @@
-"""Unit tests for patch_sim.analysis.hyperpolarization with synthetic traces.
+"""Unit tests for neuroclamp.analysis.hyperpolarization with synthetic traces.
 
 All tests use hand-crafted voltage and time arrays to verify the pure
 computation logic in isolation from the ODE solver.
@@ -7,7 +7,7 @@ computation logic in isolation from the ODE solver.
 import numpy as np
 import pytest
 
-from patch_sim.analysis.hyperpolarization import (
+from neuroclamp.analysis.hyperpolarization import (
     analyze_hyperpolarization,
     compute_sag_point,
 )

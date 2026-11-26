@@ -1,4 +1,4 @@
-"""Integration tests for patch_sim.analysis.gv_curve against real HH simulations.
+"""Integration tests for neuroclamp.analysis.gv_curve against real HH simulations.
 
 Runs a voltage-clamp multi-sweep protocol through the full simulation pipeline
 and verifies that the derived G-V curve and Boltzmann fit are physiologically
@@ -7,10 +7,10 @@ plausible.  Unit tests with synthetic data live in tests/unit/test_gv_curve.py.
 
 import numpy as np
 
-import patch_sim
-import patch_sim.channels
-from patch_sim.analysis.gv_curve import compute_gv
-from patch_sim.analysis.iv_curve import analyze_iv
+import neuroclamp
+import neuroclamp.channels
+from neuroclamp.analysis.gv_curve import compute_gv
+from neuroclamp.analysis.iv_curve import analyze_iv
 
 
 def test_gv_curve_integration_hh_neuron(hh_model):
@@ -23,7 +23,7 @@ def test_gv_curve_integration_hh_neuron(hh_model):
     pre_ms, stim_ms = 5.0, 30.0
     min_v, max_v, step_v = -80.0, 60.0, 10.0
 
-    protocol_2d = patch_sim.build_voltage_protocol(
+    protocol_2d = neuroclamp.build_voltage_protocol(
         "Step",
         sampling_frequency=40_000,
         pre_stimulus_duration=pre_ms,
@@ -39,7 +39,9 @@ def test_gv_curve_integration_hh_neuron(hh_model):
     protocols = [protocol_2d[i] for i in range(protocol_2d.shape[0])]
 
     results = list(
-        patch_sim.simulate_batch(hh_model, protocols, patch_sim.simulate_voltage_clamp)
+        neuroclamp.simulate_batch(
+            hh_model, protocols, neuroclamp.simulate_voltage_clamp
+        )
     )
     time = results[0]["time"]
     currents = [r["Itotal"] for r in results]
@@ -48,8 +50,8 @@ def test_gv_curve_integration_hh_neuron(hh_model):
     na_channel = next(
         ch
         for ch in hh_model.channels
-        if isinstance(ch.reversal_spec, patch_sim.channels.NernstSpec)
-        and ch.reversal_spec.species is patch_sim.channels.IonSpecies.SODIUM
+        if isinstance(ch.reversal_spec, neuroclamp.channels.NernstSpec)
+        and ch.reversal_spec.species is neuroclamp.channels.IonSpecies.SODIUM
     )
     e_na = na_channel.reversal_potential(hh_model)
     result = compute_gv(iv, reversal_potential=e_na)

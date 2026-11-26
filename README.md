@@ -1,6 +1,6 @@
-## patch-sim: Patch Clamp Simulator
+## neuroclamp: Patch Clamp Simulator
 
-`patch_sim` is a Python library for simulating neuronal electrophysiology using the
+`neuroclamp` is a Python library for simulating neuronal electrophysiology using the
 [Hodgkin-Huxley model](https://en.wikipedia.org/wiki/Hodgkin%E2%80%93Huxley_model).
 It models how action potentials arise at a neuron's membrane by simulating the dynamics
 of voltage-gated ion channels over time. The core model includes the classic sodium,
@@ -25,7 +25,7 @@ Key features:
 
 ## Web UI
 
-`patch_sim` includes an interactive web interface inspired by pClamp electrophysiology software.
+`neuroclamp` includes an interactive web interface inspired by pClamp electrophysiology software.
 
 - Configure neuron parameters and enable/disable additional ion channels with conductance sliders
 - Run current clamp and voltage clamp protocols
@@ -33,15 +33,45 @@ Key features:
 - Continuous simulation mode for oscilloscope-like real-time recording
 - 6 built-in presets: Action Potential, Subthreshold Response, Repetitive Firing, I-V Curve, Na+ Channel Activation, Frequency Response
 
-### Installing the UI
+### Installing from PyPI
 
 ```
-uv sync --frozen --group=ui
+pip install neuroclamp           # core library only
+pip install "neuroclamp[ui]"     # library plus the web UI
 ```
 
-### Running the UI
+Start the web UI from any directory:
 
 ```
+neuroclamp ui
+```
+
+The app opens in your browser at `http://localhost:3000` once it is ready.
+Options:
+
+- `--port PORT`: serve on a different port (default 3000).
+- `--host HOST`: interface to bind to (default `127.0.0.1`, this computer only).
+  If you bind to `0.0.0.0` and open the app from another machine, also set
+  `REFLEX_API_URL` to the URL the browser uses, for example
+  `REFLEX_API_URL=http://myhost:3000`.
+- `--no-browser`: do not open a browser.
+- `--workdir PATH`: where the generated config and frontend build are kept
+  (default: `$NEUROCLAMP_WORKDIR`, else a per-user cache directory such as
+  `~/.cache/neuroclamp/<version>/` on Linux).
+- `--reset`: delete the working directory first and rebuild the frontend.
+  The launcher only writes to, or deletes, a directory it created (or an empty
+  one), so `--workdir` cannot overwrite an existing folder.
+- `-v`, `--verbose`: show detailed progress, including the command that runs
+  the server.
+
+The first launch downloads a JavaScript runtime and builds the web frontend.
+This takes a few minutes and needs internet access; later launches reuse the
+build. On minimal Linux systems the download needs `curl` and `unzip`.
+
+### Running from a source checkout
+
+```
+uv sync --frozen --extra=ui
 uv run reflex run
 ```
 
@@ -54,8 +84,8 @@ You can run the web UI without installing uv, Python, or Node; only
 repository root:
 
 ```
-docker build -t patch-sim .
-docker run --rm -p 3000:3000 patch-sim
+docker build -t neuroclamp .
+docker run --rm -p 3000:3000 neuroclamp
 ```
 
 or, with Docker Compose:
@@ -72,7 +102,7 @@ If the browser reaches the app at any URL other than `http://localhost:3000`,
 pass that URL as `REFLEX_API_URL`:
 
 ```
-docker run --rm -p 8080:3000 -e REFLEX_API_URL=http://localhost:8080 patch-sim
+docker run --rm -p 8080:3000 -e REFLEX_API_URL=http://localhost:8080 neuroclamp
 ```
 
 - **Different host port** (e.g. `-p 8080:3000`): without `REFLEX_API_URL` the
@@ -130,13 +160,13 @@ uv run --frozen -m pytest --verbose
 To see a line-by-line coverage report for the core library:
 
 ```
-uv run --frozen -m pytest --cov=patch_sim --cov-report=term-missing
+uv run --frozen -m pytest --cov=neuroclamp --cov-report=term-missing
 ```
 
 To generate an HTML report (written to `htmlcov/`):
 
 ```
-uv run --frozen -m pytest --cov=patch_sim --cov-report=html
+uv run --frozen -m pytest --cov=neuroclamp --cov-report=html
 ```
 
 #### Linting and code style
@@ -168,4 +198,4 @@ uvx ty check
 
 ## License
 
-This project is licensed under the [GNU General Public License v3.0 or later](LICENSE).
+This project is licensed under the [GNU General Public License v3.0 or later](https://github.com/JCorson/neuroclamp/blob/main/LICENSE).

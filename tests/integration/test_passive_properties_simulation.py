@@ -1,4 +1,4 @@
-"""Integration tests for patch_sim.analysis.passive_properties with real HH simulations.
+"""Integration tests for neuroclamp.analysis.passive_properties with HH simulations.
 
 Verifies that passive property analysis (R_in, τ_m, C_m) returns physiologically
 plausible values and correct guard behavior when run on simulate_current_clamp output.
@@ -7,8 +7,8 @@ Unit tests with synthetic traces live in tests/unit/test_passive_properties.py.
 
 import pytest
 
-import patch_sim
-from patch_sim.analysis.passive_properties import (
+import neuroclamp
+from neuroclamp.analysis.passive_properties import (
     PassiveProperties,
     analyze_passive_properties,
     is_subthreshold,
@@ -26,9 +26,9 @@ _POST_MS = 50.0
 
 
 def _run_subthreshold_sim(
-    hh_model: patch_sim.Neuron,
+    hh_model: neuroclamp.Neuron,
     current_amplitude: float = -1.0,
-) -> tuple[patch_sim.SimulationResult, float, float]:
+) -> tuple[neuroclamp.SimulationResult, float, float]:
     """Run a short subthreshold current clamp simulation.
 
     Args:
@@ -40,24 +40,24 @@ def _run_subthreshold_sim(
     """
     stim_start = _PRE_MS
     stim_end = _PRE_MS + _STIM_MS
-    stimulus = patch_sim.step_current(
+    stimulus = neuroclamp.step_current(
         duration=_PRE_MS + _STIM_MS + _POST_MS,
         current_amplitude=current_amplitude,
         step_start=stim_start,
         step_duration=_STIM_MS,
     )
-    result = patch_sim.simulate_current_clamp(hh_model, stimulus)
+    result = neuroclamp.simulate_current_clamp(hh_model, stimulus)
     return result, stim_start, stim_end
 
 
 @pytest.fixture(scope="module")
-def _subthreshold_passive() -> tuple[patch_sim.SimulationResult, PassiveProperties]:
+def _subthreshold_passive() -> tuple[neuroclamp.SimulationResult, PassiveProperties]:
     """Run one subthreshold sim and analyze passive properties once per module.
 
     Returns:
         Tuple of (simulation_result, passive_properties).
     """
-    neuron = patch_sim.presets.make_squid_giant_axon()
+    neuron = neuroclamp.presets.make_squid_giant_axon()
     result, stim_start, stim_end = _run_subthreshold_sim(neuron, -1.0)
     props = analyze_passive_properties(
         result["time"],
@@ -71,20 +71,20 @@ def _subthreshold_passive() -> tuple[patch_sim.SimulationResult, PassiveProperti
 
 
 @pytest.fixture(scope="module")
-def _suprathreshold_result() -> patch_sim.SimulationResult:
+def _suprathreshold_result() -> neuroclamp.SimulationResult:
     """Run one suprathreshold sim once per module.
 
     Returns:
         Simulation result for a spiking trace.
     """
-    neuron = patch_sim.presets.make_squid_giant_axon()
-    stimulus = patch_sim.step_current(
+    neuron = neuroclamp.presets.make_squid_giant_axon()
+    stimulus = neuroclamp.step_current(
         duration=_PRE_MS + _STIM_MS + _POST_MS,
         current_amplitude=20.0,
         step_start=_PRE_MS,
         step_duration=_STIM_MS,
     )
-    return patch_sim.simulate_current_clamp(neuron, stimulus)
+    return neuroclamp.simulate_current_clamp(neuron, stimulus)
 
 
 # ---------------------------------------------------------------------------
@@ -93,7 +93,7 @@ def _suprathreshold_result() -> patch_sim.SimulationResult:
 
 
 def test_is_subthreshold_rejects_spiking(
-    _suprathreshold_result: patch_sim.SimulationResult,
+    _suprathreshold_result: neuroclamp.SimulationResult,
 ) -> None:
     """Suprathreshold stimulus produces spikes; is_subthreshold returns False."""
     result = _suprathreshold_result
@@ -106,7 +106,7 @@ def test_is_subthreshold_rejects_spiking(
 
 
 def test_returns_none_for_suprathreshold(
-    _suprathreshold_result: patch_sim.SimulationResult,
+    _suprathreshold_result: neuroclamp.SimulationResult,
 ) -> None:
     """analyze_passive_properties returns None for a spiking trace."""
     result = _suprathreshold_result
@@ -126,7 +126,7 @@ def test_returns_none_for_suprathreshold(
 
 
 def test_input_resistance_hh_model(
-    _subthreshold_passive: tuple[patch_sim.SimulationResult, PassiveProperties],
+    _subthreshold_passive: tuple[neuroclamp.SimulationResult, PassiveProperties],
 ) -> None:
     """R_in from a real HH simulation is positive and in a plausible range.
 
@@ -141,7 +141,7 @@ def test_input_resistance_hh_model(
 
 
 def test_time_constant_hh_model(
-    _subthreshold_passive: tuple[patch_sim.SimulationResult, PassiveProperties],
+    _subthreshold_passive: tuple[neuroclamp.SimulationResult, PassiveProperties],
 ) -> None:
     """τₘ from a real HH simulation is positive and within a plausible range.
 
@@ -160,7 +160,7 @@ def test_time_constant_hh_model(
 
 
 def test_membrane_capacitance_hh_model(
-    _subthreshold_passive: tuple[patch_sim.SimulationResult, PassiveProperties],
+    _subthreshold_passive: tuple[neuroclamp.SimulationResult, PassiveProperties],
 ) -> None:
     """Derived Cₘ from the HH model is positive and in a plausible range.
 
@@ -177,7 +177,7 @@ def test_membrane_capacitance_hh_model(
 
 
 def test_fit_converged_flag_hh_model(
-    _subthreshold_passive: tuple[patch_sim.SimulationResult, PassiveProperties],
+    _subthreshold_passive: tuple[neuroclamp.SimulationResult, PassiveProperties],
 ) -> None:
     """Exponential fit converges for a clean subthreshold HH sweep."""
     _, props = _subthreshold_passive

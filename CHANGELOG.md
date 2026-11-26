@@ -1,7 +1,7 @@
 # Changelog
 
-All notable user-facing changes to patch-sim are recorded here: new features,
-changes in behavior, changes to the `patch_sim` Python API, and fixes that
+All notable user-facing changes to neuroclamp are recorded here: new features,
+changes in behavior, changes to the `neuroclamp` Python API, and fixes that
 change simulation results. Internal refactors, test, CI, and dependency updates
 are not listed; see the pull request history for those.
 
@@ -12,11 +12,11 @@ listed under **Changed** or **Removed**.
 
 ## [Unreleased]
 
-## [0.1.0] - Unreleased
+## [0.1.0] - 2026-11-25
 
-The first release of patch-sim, a patch-clamp experiment simulator built on
+The first release of neuroclamp, a patch-clamp experiment simulator built on
 conductance-based (Hodgkin-Huxley) neuron models. It ships as a Python library
-(`patch_sim`) and an interactive web app. Requires Python 3.12 or newer.
+(`neuroclamp`) and an interactive web app. Requires Python 3.12 or newer.
 
 ### Added
 
@@ -68,7 +68,7 @@ conductance-based (Hodgkin-Huxley) neuron models. It ships as a Python library
 
 #### Analysis
 
-- `patch_sim.analysis`, which turns traces into physiological metrics, each with
+- `neuroclamp.analysis`, which turns traces into physiological metrics, each with
   a typed result object:
   - Action potentials: threshold, peak, rise time, half-width, AHP depth, ISI,
     and firing rate.
@@ -104,10 +104,19 @@ conductance-based (Hodgkin-Huxley) neuron models. It ships as a Python library
 - A Docker image and Compose file for running the app without installing
   Python, uv, or Node.
 
+#### Installation
+
+- neuroclamp installs from PyPI: `pip install neuroclamp` for the library, or
+  `pip install "neuroclamp[ui]"` for the library and the web app. The library
+  ships type annotations (`py.typed`) for type checkers.
+- The `neuroclamp ui` command starts the web app from any directory, with
+  `--port`, `--host`, `--no-browser`, `--workdir`, `--reset` and `--verbose`
+  options. It opens the app in your browser once the server is ready.
+
 #### Documentation
 
 - A library documentation site covering the presets, protocols, and analysis,
   with a generated API reference.
 
-[Unreleased]: https://github.com/JCorson/patch-sim/compare/v0.1.0...HEAD
-[0.1.0]: https://github.com/JCorson/patch-sim/releases/tag/v0.1.0
+[Unreleased]: https://github.com/JCorson/neuroclamp/compare/v0.1.0...HEAD
+[0.1.0]: https://github.com/JCorson/neuroclamp/releases/tag/v0.1.0

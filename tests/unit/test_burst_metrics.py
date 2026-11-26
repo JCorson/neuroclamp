@@ -1,4 +1,4 @@
-"""Unit tests for the patch_sim.analysis.burst_metrics module.
+"""Unit tests for the neuroclamp.analysis.burst_metrics module.
 
 Verifies burst detection, threshold estimation, per-burst and aggregate
 metric computation, and edge-case behavior using synthetic
@@ -11,21 +11,21 @@ from typing import cast
 import numpy as np
 import pytest
 
-from patch_sim.analysis.ap_metrics import APAnalysisResult, SpikeMetrics
-from patch_sim.analysis.burst_metrics import (
+from neuroclamp.analysis.ap_metrics import APAnalysisResult, SpikeMetrics
+from neuroclamp.analysis.burst_metrics import (
     _LTS_QUIESCENT_TAIL_MS,
     _LTS_TERMINATION_GAP_RATIO,
     BurstAnalysisResult,
     analyze_bursts,
     analyze_bursts_from_result,
 )
-from patch_sim.clamp_simulations import SimulationResult
+from neuroclamp.clamp_simulations import SimulationResult
 
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
 
-# Mirrors patch_sim.analysis.burst_metrics._TIGHT_CLUSTER_MAX_ISI_MS — the
+# Mirrors neuroclamp.analysis.burst_metrics._TIGHT_CLUSTER_MAX_ISI_MS — the
 # threshold the default-fixed path returns and applies to grouping when no
 # auto-histogram bimodality is detected.
 _DEFAULT_THRESHOLD_MS = 12.0

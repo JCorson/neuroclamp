@@ -12,9 +12,8 @@ on:
       - uv.lock
       - .python-version
       - rxconfig.py
-      - patch_sim/**
-      - patch_sim_ui/**
-      - assets/**
+      - neuroclamp/**
+      - neuroclamp_ui/**
       - tools/smoke_test.py
       - .github/workflows/docker.yml
   pull_request:
@@ -41,18 +40,18 @@ jobs:
         with:
           context: .
           load: true
-          tags: patch-sim:ci
+          tags: neuroclamp:ci
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
       - name: Start container
-        run: docker run -d --name patch-sim -p 3000:3000 patch-sim:ci
+        run: docker run -d --name neuroclamp -p 3000:3000 neuroclamp:ci
 
       - name: Wait for the app
         run: |
           for _ in $(seq 1 60); do
             if curl -fsS --max-time 5 http://localhost:3000/ping; then exit 0; fi
-            if [ "$(docker inspect -f '{{.State.Running}}' patch-sim)" != true ]; then
+            if [ "$(docker inspect -f '{{.State.Running}}' neuroclamp)" != true ]; then
               echo "Container exited before the app came up"
               exit 1
             fi
@@ -74,8 +73,8 @@ jobs:
         run: |
           uv sync --frozen --no-dev --group=browser
           uv run --frozen --no-sync playwright install --with-deps chromium
-          PATCH_SIM_URL=http://localhost:3000 uv run --frozen --no-sync python tools/smoke_test.py
+          NEUROCLAMP_URL=http://localhost:3000 uv run --frozen --no-sync python tools/smoke_test.py
 
       - name: Container logs
         if: always()
-        run: docker logs patch-sim
+        run: docker logs neuroclamp
