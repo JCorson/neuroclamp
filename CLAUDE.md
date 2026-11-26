@@ -118,6 +118,8 @@ The shared `hh_model` fixture lives in `tests/conftest.py` and is discoverable b
 
 Pytest is configured with `-n auto --dist=loadscope` (parallel via xdist, tests in the same module pinned to the same worker).
 
+`tests/integration/test_golden_traces.py` compares every neuron preset × protocol preset against stored reference traces in `tests/integration/golden/`. A failure there means simulation results changed. Do not loosen the tolerances to make it pass; if the change is intended, regenerate with `uv run --frozen python -m tests.integration._golden` and add a `CHANGELOG.md` entry, since changed simulation results are user-visible.
+
 Additional conventions:
 - Use plain functions, not test classes
 - Use `pytest.approx` for float comparisons
