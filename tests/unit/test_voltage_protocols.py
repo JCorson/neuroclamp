@@ -6,7 +6,7 @@ This module contains unit tests for all voltage clamp protocol functions.
 import numpy as np
 import pytest
 
-from patch_sim.protocols import (
+from neuroclamp.protocols import (
     pulse_train_voltage,
     ramp_voltage,
     step_voltage,

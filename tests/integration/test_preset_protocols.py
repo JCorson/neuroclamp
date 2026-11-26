@@ -13,11 +13,11 @@ from __future__ import annotations
 import numpy as np
 import pytest
 
-from patch_sim.clamp_simulations import (
+from neuroclamp.clamp_simulations import (
     simulate_current_clamp,
     simulate_voltage_clamp,
 )
-from patch_sim.constants import (
+from neuroclamp.constants import (
     ACTION_POTENTIAL,
     DOPAMINERGIC,
     PURKINJE,
@@ -25,7 +25,7 @@ from patch_sim.constants import (
     STN,
     TRN,
 )
-from patch_sim.presets import (
+from neuroclamp.presets import (
     NEURON_PRESET_NAMES,
     NEURON_PRESETS,
     build_protocol_from_preset,

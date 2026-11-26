@@ -1,4 +1,4 @@
-"""Unit tests for patch_sim.analysis.impedance.
+"""Unit tests for neuroclamp.analysis.impedance.
 
 Covers analyze_impedance with synthetic stimulus/response signals and edge
 cases.  Integration tests against real simulations live in
@@ -8,8 +8,8 @@ tests/integration/test_impedance_simulation.py.
 import numpy as np
 import pytest
 
-import patch_sim
-from patch_sim.analysis.impedance import analyze_impedance
+import neuroclamp
+from neuroclamp.analysis.impedance import analyze_impedance
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -43,7 +43,7 @@ def _chirp_and_time(
     Returns:
         Tuple of (time array in ms, chirp current array).
     """
-    current = patch_sim.chirp_current(
+    current = neuroclamp.chirp_current(
         duration=duration_ms,
         dc_offset=dc_offset,
         amplitude=amplitude,
@@ -365,14 +365,14 @@ def test_impedance_unavailable_reason_messages() -> None:
 
     # OK case → empty string.
     assert (
-        patch_sim.impedance_unavailable_reason(
+        neuroclamp.impedance_unavailable_reason(
             time, clean_voltage, current, 0.0, _window_end(time), _F_START, _F_END
         )
         == ""
     )
 
     # Window shorter than _MIN_WINDOW_MS → "shorter than the minimum".
-    short_reason = patch_sim.impedance_unavailable_reason(
+    short_reason = neuroclamp.impedance_unavailable_reason(
         time, clean_voltage, current, 0.0, 10.0, _F_START, _F_END
     )
     assert "shorter than the minimum" in short_reason
@@ -382,7 +382,7 @@ def test_impedance_unavailable_reason_messages() -> None:
     for center_ms in np.arange(50.0, _DURATION_MS, 50.0):
         sp = (time >= center_ms) & (time < center_ms + 5.0)
         busy_voltage[sp] = 30.0
-    busy_reason = patch_sim.impedance_unavailable_reason(
+    busy_reason = neuroclamp.impedance_unavailable_reason(
         time, busy_voltage, current, 0.0, _window_end(time), _F_START, _F_END
     )
     assert "fired throughout" in busy_reason or "spike-free segment" in busy_reason

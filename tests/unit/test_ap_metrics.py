@@ -1,4 +1,4 @@
-"""Unit tests for the patch_sim.analysis.ap_metrics module.
+"""Unit tests for the neuroclamp.analysis.ap_metrics module.
 
 Verifies spike detection and per-spike metric extraction using synthetic traces:
 no spikes, single spike, parameter sensitivity. Tests that drive a real HH
@@ -8,7 +8,7 @@ simulation live in tests/integration/test_ap_metrics_simulation.py.
 import numpy as np
 import pytest
 
-from patch_sim.analysis.ap_metrics import (
+from neuroclamp.analysis.ap_metrics import (
     APAnalysisResult,
     analyze_aps,
 )

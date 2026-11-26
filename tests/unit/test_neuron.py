@@ -4,15 +4,15 @@ import dataclasses
 
 import pytest
 
-from patch_sim.channels import (
+from neuroclamp.channels import (
     IonChannel,
     IonSpecies,
     NernstSpec,
     make_k_channel,
     make_na_channel,
 )
-from patch_sim.neuron import Neuron
-from patch_sim.presets import make_squid_giant_axon
+from neuroclamp.neuron import Neuron
+from neuroclamp.presets import make_squid_giant_axon
 
 
 def test_initialization(hh_model: Neuron) -> None:
@@ -65,7 +65,7 @@ def test_all_gating_variables_squid(hh_model: Neuron) -> None:
 
 def test_all_gating_variables_extra() -> None:
     """all_gating_variables flattens gates from every channel in order."""
-    from patch_sim.channels import GatingVariable, alpha_n, beta_n
+    from neuroclamp.channels import GatingVariable, alpha_n, beta_n
 
     gv_new = GatingVariable(
         name="kextra_activation", power=4, alpha=alpha_n, beta=beta_n
@@ -99,7 +99,7 @@ def test_frozen_immutability(hh_model: Neuron) -> None:
 
 def test_reversal_potentials_from_channels(hh_model: Neuron) -> None:
     """Channel reversal potentials match direct Nernst calculation."""
-    from patch_sim.electrochemistry import nernst_potential
+    from neuroclamp.electrochemistry import nernst_potential
 
     by_name = {ch.name: ch for ch in hh_model.channels}
     expected_E_Na = nernst_potential(1, hh_model.T, hh_model.Na_out, hh_model.Na_in)
@@ -122,7 +122,7 @@ def test_reversal_potentials_in_physiological_range(hh_model: Neuron) -> None:
 
 def test_custom_ion_concentrations_shift_reversal_potentials() -> None:
     """Changing ion concentrations must produce shifted reversal potentials."""
-    from patch_sim.electrochemistry import nernst_potential
+    from neuroclamp.electrochemistry import nernst_potential
 
     custom_model = dataclasses.replace(
         make_squid_giant_axon(), Na_out=200.0, K_in=100.0, T=293.15
@@ -150,7 +150,7 @@ def test_custom_ion_concentrations_shift_reversal_potentials() -> None:
 
 def test_calcium_reversal_potential() -> None:
     """Calcium channel reversal potential matches Nernst with z=2."""
-    from patch_sim.electrochemistry import nernst_potential
+    from neuroclamp.electrochemistry import nernst_potential
 
     model = Neuron()
     ca_ch = IonChannel(

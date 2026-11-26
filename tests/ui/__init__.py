@@ -1,1 +1,1 @@
-"""Tests for the patch_sim_ui Reflex layer."""
+"""Tests for the neuroclamp_ui Reflex layer."""

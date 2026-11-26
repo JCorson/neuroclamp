@@ -5,7 +5,7 @@ Usage::
     uv build
     uv run --no-project python tools/check_dist.py dist
 
-The checks guard what an installed ``patch-sim`` needs at runtime (help pages,
+The checks guard what an installed ``neuroclamp`` needs at runtime (help pages,
 JS templates, screenshots) and what must stay out of it (a top-level
 ``rxconfig`` module, tests, build caches). The script uses only the standard
 library, so it runs without the project environment. It exits non-zero and
@@ -22,13 +22,13 @@ from pathlib import Path
 #: Files that must be present in the wheel, as glob patterns with the minimum
 #: number of matches each.
 WHEEL_REQUIRED: dict[str, int] = {
-    "patch_sim/__init__.py": 1,
-    "patch_sim/py.typed": 1,
-    "patch_sim/presets/*.py": 1,
-    "patch_sim_ui/__init__.py": 1,
-    "patch_sim_ui/help_content/*.md": 5,
-    "patch_sim_ui/js/*.js": 2,
-    "patch_sim_ui/help_content/screenshots/*.png": 7,
+    "neuroclamp/__init__.py": 1,
+    "neuroclamp/py.typed": 1,
+    "neuroclamp/presets/*.py": 1,
+    "neuroclamp_ui/__init__.py": 1,
+    "neuroclamp_ui/help_content/*.md": 5,
+    "neuroclamp_ui/js/*.js": 2,
+    "neuroclamp_ui/help_content/screenshots/*.png": 7,
 }
 
 #: Top-level names that must not appear in either artifact.
@@ -138,7 +138,7 @@ def check_sdist(sdist: Path) -> list[str]:
         if name in top_level:
             failures.append(f"sdist: forbidden top-level entry {name}")
     if not any(
-        path.match("patch_sim_ui/help_content/screenshots/*.png") for path in relative
+        path.match("neuroclamp_ui/help_content/screenshots/*.png") for path in relative
     ):
         failures.append("sdist: missing the help-page screenshots")
     return failures

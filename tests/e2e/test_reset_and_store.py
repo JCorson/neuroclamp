@@ -3,7 +3,7 @@
 Exercises the wiring between run → store_trace → run again → clear_stored_traces.
 """
 
-from patch_sim.constants import ACTION_POTENTIAL, SQUID_GIANT_AXON
+from neuroclamp.constants import ACTION_POTENTIAL, SQUID_GIANT_AXON
 from tests.e2e.conftest import StateTree, run_flow, simulate_and_apply
 
 

@@ -11,17 +11,17 @@ import dataclasses
 
 import numpy as np
 
-from patch_sim.analysis.calcium_transients import (
+from neuroclamp.analysis.calcium_transients import (
     analyze_calcium_transients_from_result,
 )
-from patch_sim.calcium import CalciumDynamics
-from patch_sim.channels import GatingVariable, IonChannel, IonSpecies, NernstSpec
-from patch_sim.clamp_simulations import simulate_current_clamp
-from patch_sim.constants import PURKINJE
-from patch_sim.neuron import Neuron
-from patch_sim.presets import NEURON_PRESETS, make_squid_giant_axon
-from patch_sim.protocols import step_current
-from patch_sim.rates import VoltageOnlyFn
+from neuroclamp.calcium import CalciumDynamics
+from neuroclamp.channels import GatingVariable, IonChannel, IonSpecies, NernstSpec
+from neuroclamp.clamp_simulations import simulate_current_clamp
+from neuroclamp.constants import PURKINJE
+from neuroclamp.neuron import Neuron
+from neuroclamp.presets import NEURON_PRESETS, make_squid_giant_axon
+from neuroclamp.protocols import step_current
+from neuroclamp.rates import VoltageOnlyFn
 
 
 def _hh_with(*extras: IonChannel, **overrides: object) -> Neuron:

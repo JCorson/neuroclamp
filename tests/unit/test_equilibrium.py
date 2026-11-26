@@ -4,8 +4,8 @@ import warnings
 
 import pytest
 
-from patch_sim import find_coupled_equilibrium, find_zero_current_voltage
-from patch_sim.constants import (
+from neuroclamp import find_coupled_equilibrium, find_zero_current_voltage
+from neuroclamp.constants import (
     CORTICAL_PYRAMIDAL,
     DOPAMINERGIC,
     PURKINJE,
@@ -13,9 +13,9 @@ from patch_sim.constants import (
     THALAMIC_RELAY,
     TRN,
 )
-from patch_sim.equilibrium import _total_ionic_current
-from patch_sim.neuron import Neuron
-from patch_sim.presets import NEURON_PRESET_NAMES, NEURON_PRESETS
+from neuroclamp.equilibrium import _total_ionic_current
+from neuroclamp.neuron import Neuron
+from neuroclamp.presets import NEURON_PRESET_NAMES, NEURON_PRESETS
 
 
 def test_total_ionic_current_type(hh_model: Neuron) -> None:
@@ -47,7 +47,7 @@ def test_find_zero_current_voltage_invalid_range() -> None:
 
 def test_find_zero_current_voltage_no_bracket() -> None:
     """ValueError is raised when the range does not bracket a root."""
-    from patch_sim.presets import make_squid_giant_axon
+    from neuroclamp.presets import make_squid_giant_axon
 
     # Squid HH52 rest is near −65 mV; [−100, −95] is well below any root.
     neuron = make_squid_giant_axon()

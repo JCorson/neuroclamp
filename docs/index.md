@@ -1,6 +1,6 @@
 # Patch Clamp Simulator
 
-`patch_sim` simulates patch-clamp electrophysiology experiments using
+`neuroclamp` simulates patch-clamp electrophysiology experiments using
 conductance-based (Hodgkin-Huxley) neuron models. It reproduces how action
 potentials arise from the dynamics of voltage- and calcium-gated ion channels,
 and ships with an interactive web UI inspired by pClamp.
@@ -13,7 +13,7 @@ There are two ways to use it:
 - **The Python library** — build neurons and protocols, run simulations, and
   analyze the results programmatically.
 
-This site is the **library reference**: how to use `patch_sim` from Python. For
+This site is the **library reference**: how to use `neuroclamp` from Python. For
 help driving the web app, open the in-app Help.
 
 ## The workflow
@@ -33,9 +33,9 @@ Every experiment, in the UI or in code, follows the same four steps:
 
 The project is split into two cleanly separated layers:
 
-- **`patch_sim/`** — the pure-Python core library. All simulation, channel,
+- **`neuroclamp/`** — the pure-Python core library. All simulation, channel,
   protocol, and analysis logic lives here. It has no UI dependency.
-- **`patch_sim_ui/`** — the [Reflex](https://reflex.dev) web application that
+- **`neuroclamp_ui/`** — the [Reflex](https://reflex.dev) web application that
   wraps the core library in interactive controls and plots.
 
 ## Installation
@@ -43,12 +43,12 @@ The project is split into two cleanly separated layers:
 Install from PyPI:
 
 ```
-pip install patch-sim           # core library only
-pip install "patch-sim[ui]"     # library plus the web UI
+pip install neuroclamp           # core library only
+pip install "neuroclamp[ui]"     # library plus the web UI
 ```
 
-and start the web UI from any directory with `patch-sim ui` (run
-`patch-sim ui --help` for its options). The first launch builds the web
+and start the web UI from any directory with `neuroclamp ui` (run
+`neuroclamp ui --help` for its options). The first launch builds the web
 frontend, which takes a few minutes and needs internet access.
 
 To work from a source checkout, use [uv](https://docs.astral.sh/uv/):
@@ -75,11 +75,11 @@ To run the UI without installing uv or Python, build and run the Docker image
 from the repository root:
 
 ```
-docker build -t patch-sim .
-docker run --rm -p 3000:3000 patch-sim
+docker build -t neuroclamp .
+docker run --rm -p 3000:3000 neuroclamp
 ```
 
-See [Running with Docker](https://github.com/JCorson/patch-sim#running-with-docker)
+See [Running with Docker](https://github.com/JCorson/neuroclamp#running-with-docker)
 in the README for Docker Compose, custom ports, and access from other machines.
 
 ## A first simulation in code
@@ -88,11 +88,11 @@ The example below builds a classic squid-axon neuron, injects a 50 ms current
 step, simulates the response, and counts the action potentials:
 
 ```python
-import patch_sim
-from patch_sim import simulate_current_clamp, step_current
+import neuroclamp
+from neuroclamp import simulate_current_clamp, step_current
 
 # 1. Neuron: a built-in preset factory returns a configured Neuron.
-neuron = patch_sim.NEURON_PRESETS["Squid Giant Axon (Classic HH)"]()
+neuron = neuroclamp.NEURON_PRESETS["Squid Giant Axon (Classic HH)"]()
 
 # 2. Protocol: a 50 ms, 15 uA/cm^2 current step (a 1-D stimulus array).
 stimulus = step_current(duration=50.0, current_amplitude=15.0)
@@ -101,7 +101,7 @@ stimulus = step_current(duration=50.0, current_amplitude=15.0)
 result = simulate_current_clamp(neuron, current_external=stimulus)
 
 # 4. Analyze: detect spikes in the recorded trace.
-aps = patch_sim.analyze_aps(result["time"], result["voltage"])
+aps = neuroclamp.analyze_aps(result["time"], result["voltage"])
 print(aps.spike_count, "spikes; peak", result["voltage"].max(), "mV")
 ```
 

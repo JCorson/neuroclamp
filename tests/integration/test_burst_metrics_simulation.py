@@ -8,23 +8,23 @@ tests/unit/test_burst_metrics.py.
 
 import numpy as np
 
-import patch_sim
-from patch_sim.analysis.burst_metrics import (
+import neuroclamp
+from neuroclamp.analysis.burst_metrics import (
     _TIGHT_CLUSTER_MAX_ISIS,
     analyze_bursts,
     analyze_bursts_from_result,
 )
-from patch_sim.clamp_simulations import simulate_batch, simulate_current_clamp
-from patch_sim.constants import (
+from neuroclamp.clamp_simulations import simulate_batch, simulate_current_clamp
+from neuroclamp.constants import (
     HYPERPOLARIZATION_STEPS,
     PURKINJE,
     STN,
     THALAMIC_RELAY,
     TRN,
 )
-from patch_sim.neuron import Neuron
-from patch_sim.presets import NEURON_PRESETS, build_protocol_from_preset
-from patch_sim.protocols import step_current
+from neuroclamp.neuron import Neuron
+from neuroclamp.presets import NEURON_PRESETS, build_protocol_from_preset
+from neuroclamp.protocols import step_current
 from tests._rebound import post_release_rebound
 
 
@@ -66,7 +66,7 @@ def test_purkinje_tonic_firing_reports_zero_bursts() -> None:
     steady_time = time[settle_mask]
     steady_voltage = voltage[settle_mask]
     total_duration_ms = float(steady_time[-1] - steady_time[0])
-    ap_result = patch_sim.analyze_aps(steady_time, steady_voltage)
+    ap_result = neuroclamp.analyze_aps(steady_time, steady_voltage)
     analysis = analyze_bursts(ap_result, total_duration_ms=total_duration_ms)
 
     assert analysis.threshold_method == "default-fixed"
@@ -98,7 +98,7 @@ def test_classic_hh_tonic_firing_reports_zero_bursts(
     result = simulate_current_clamp(hh_model, protocol)
     time = np.asarray(result["time"])
     total_duration_ms = float(time[-1] - time[0])
-    ap_result = patch_sim.analyze_aps_from_result(result)
+    ap_result = neuroclamp.analyze_aps_from_result(result)
     analysis = analyze_bursts(ap_result, total_duration_ms=total_duration_ms)
 
     assert analysis.threshold_method == "default-fixed"
@@ -140,7 +140,7 @@ def test_classic_hh_short_stimulus_tonic_does_not_trip_tight_cluster(
     result = simulate_current_clamp(hh_model, protocol)
     time = np.asarray(result["time"])
     total_duration_ms = float(time[-1] - time[0])
-    ap_result = patch_sim.analyze_aps_from_result(result)
+    ap_result = neuroclamp.analyze_aps_from_result(result)
     analysis = analyze_bursts(ap_result, total_duration_ms=total_duration_ms)
 
     assert len(ap_result.isis) > _TIGHT_CLUSTER_MAX_ISIS, (
@@ -164,7 +164,7 @@ def test_thalamic_relay_step_release_produces_multi_spike_lts_burst() -> None:
     the ICaT-driven calcium plateau.  Sustained hyperpolarization
     de-inactivates the ICaT ``ft`` gate; on release the LTS depolarizes the
     membrane and the TC-tuned slow ICaT inactivation
-    (:func:`~patch_sim.channels.thalamic.make_thalamic_relay_icat_channel`)
+    (:func:`~neuroclamp.channels.thalamic.make_thalamic_relay_icat_channel`)
     sustains the plateau long enough for several Na⁺ spikes to fire.
 
     Verifies issue #287: prior to the fix, the TC preset produced only a
@@ -213,7 +213,7 @@ def test_trn_step_release_produces_hp92_rebound_burst() -> None:
     depolarizing drive on release — Bal & McCormick 1993) and the
     sigmoid-shaped ICaT inactivation tau (sustains the LTS plateau long
     enough to fit 5+ spikes —
-    :func:`~patch_sim.channels.trn.make_trn_icat_channel`).
+    :func:`~neuroclamp.channels.trn.make_trn_icat_channel`).
 
     Verifies issue #295: prior to the fix, the cosh-shaped Destexhe (1994)
     ICaT inactivation tau collapsed the LTS plateau in ~5–10 ms (too fast
@@ -312,7 +312,7 @@ def test_trn_hyperpolarization_steps_protocol_produces_burst_per_sweep() -> None
         result = results[sweep_idx]
         time_arr = np.asarray(result["time"])
         v_arr = np.asarray(result["voltage"])
-        ap_result = patch_sim.analyze_aps(time_arr, v_arr)
+        ap_result = neuroclamp.analyze_aps(time_arr, v_arr)
         analysis = analyze_bursts(
             ap_result,
             total_duration_ms=float(time_arr[-1] - time_arr[0]),
@@ -396,7 +396,7 @@ def test_user_supplied_threshold_changes_grouping() -> None:
     result = simulate_current_clamp(neuron, protocol)
     time = np.asarray(result["time"])
     total_duration_ms = float(time[-1] - time[0])
-    ap_result = patch_sim.analyze_aps_from_result(result)
+    ap_result = neuroclamp.analyze_aps_from_result(result)
     if ap_result.spike_count < 2:
         # Defensive: should not happen with this protocol, but skip the
         # comparison rather than fail spuriously if it does.

@@ -1,6 +1,6 @@
 site_name: Patch Clamp Simulator
 site_description: Hodgkin-Huxley patch clamp experiment simulator
-repo_url: https://github.com/JCorson/patch-sim
+repo_url: https://github.com/JCorson/neuroclamp
 docs_dir: docs
 
 theme:

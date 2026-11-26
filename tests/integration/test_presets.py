@@ -1,4 +1,4 @@
-"""Tests for patch_sim.presets — preset data structures and build_protocol_from_preset.
+"""Tests for neuroclamp.presets — preset data structures and build_protocol_from_preset.
 
 Focuses on the preset catalog itself and verifies that neuron-specific
 protocol adjustments are actually applied (not just that the function runs
@@ -8,9 +8,9 @@ without error).
 import numpy as np
 import pytest
 
-import patch_sim
-from patch_sim.analysis.membrane_test import run_membrane_test
-from patch_sim.channels import (
+import neuroclamp
+from neuroclamp.analysis.membrane_test import run_membrane_test
+from neuroclamp.channels import (
     make_dopaminergic_k_channel,
     make_dopaminergic_na_channel,
     make_nav11_channel,
@@ -24,8 +24,8 @@ from patch_sim.channels import (
     make_trn_k_channel,
     make_trn_na_channel,
 )
-from patch_sim.channels.base import IonChannel
-from patch_sim.constants import (
+from neuroclamp.channels.base import IonChannel
+from neuroclamp.constants import (
     ACTION_POTENTIAL,
     CA1_PYRAMIDAL,
     CORTICAL_PYRAMIDAL,
@@ -38,8 +38,8 @@ from patch_sim.constants import (
     THALAMIC_RELAY,
     TRN,
 )
-from patch_sim.neuron import Neuron
-from patch_sim.presets import (
+from neuroclamp.neuron import Neuron
+from neuroclamp.presets import (
     NEURON_PRESET_NAMES,
     NEURON_PRESETS,
     NEURON_PROTOCOL_ADJUSTMENTS,
@@ -224,14 +224,14 @@ def test_caller_overrides_take_precedence_over_neuron_adjustments() -> None:
 
 
 # ---------------------------------------------------------------------------
-# Top-level patch_sim re-export
+# Top-level neuroclamp re-export
 # ---------------------------------------------------------------------------
 
 
-def test_build_protocol_from_preset_exported_from_patch_sim() -> None:
-    """build_protocol_from_preset is accessible directly from the patch_sim package."""
-    assert callable(patch_sim.build_protocol_from_preset)
-    result = patch_sim.build_protocol_from_preset(
+def test_build_protocol_from_preset_exported_from_neuroclamp() -> None:
+    """build_protocol_from_preset is accessible directly from the neuroclamp package."""
+    assert callable(neuroclamp.build_protocol_from_preset)
+    result = neuroclamp.build_protocol_from_preset(
         ACTION_POTENTIAL, sampling_frequency=SAMPLING_FREQUENCY
     )
     assert isinstance(result, np.ndarray) and result.shape[0] == 1

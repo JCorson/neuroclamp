@@ -5,26 +5,26 @@ plus the electrochemistry and equilibrium helpers.
 
 ## Runners
 
-::: patch_sim.simulate_current_clamp
+::: neuroclamp.simulate_current_clamp
 
-::: patch_sim.simulate_voltage_clamp
+::: neuroclamp.simulate_voltage_clamp
 
-::: patch_sim.simulate_current_clamp_from_state
+::: neuroclamp.simulate_current_clamp_from_state
 
-::: patch_sim.simulate_voltage_clamp_from_state
+::: neuroclamp.simulate_voltage_clamp_from_state
 
-::: patch_sim.simulate_batch
+::: neuroclamp.simulate_batch
 
 ## Result
 
-::: patch_sim.SimulationResult
+::: neuroclamp.SimulationResult
 
 ## Electrochemistry and equilibrium
 
-::: patch_sim.nernst_potential
+::: neuroclamp.nernst_potential
 
-::: patch_sim.goldman_potential
+::: neuroclamp.goldman_potential
 
-::: patch_sim.find_zero_current_voltage
+::: neuroclamp.find_zero_current_voltage
 
-::: patch_sim.find_coupled_equilibrium
+::: neuroclamp.find_coupled_equilibrium

@@ -1,8 +1,8 @@
-"""Tests for patch_sim.analysis.derivatives."""
+"""Tests for neuroclamp.analysis.derivatives."""
 
 import numpy as np
 
-from patch_sim.analysis.derivatives import compute_dvdt
+from neuroclamp.analysis.derivatives import compute_dvdt
 
 
 def test_compute_dvdt_constant_voltage_returns_zero_dvdt() -> None:

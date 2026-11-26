@@ -1,4 +1,4 @@
-"""Integration tests for patch_sim.analysis.ap_metrics with real HH simulations.
+"""Integration tests for neuroclamp.analysis.ap_metrics with real HH simulations.
 
 Verifies spike detection, ISI statistics, and parameter sensitivity when applied
 to voltage traces produced by simulate_current_clamp.
@@ -8,8 +8,8 @@ Unit tests with synthetic traces live in tests/unit/test_ap_metrics.py.
 import numpy as np
 import pytest
 
-import patch_sim
-from patch_sim.analysis.ap_metrics import (
+import neuroclamp
+from neuroclamp.analysis.ap_metrics import (
     analyze_aps,
     analyze_aps_from_result,
 )
@@ -42,7 +42,7 @@ def _stimulus(duration_ms: float, amp: float, start_ms: float, stop_ms: float):
 def test_multiple_spikes_hh_model(hh_model):
     """Suprathreshold current on the HH model produces multiple detected spikes."""
     stimulus = _stimulus(100.0, 20.0, 10.0, 90.0)
-    result_sim = patch_sim.simulate_current_clamp(hh_model, stimulus)
+    result_sim = neuroclamp.simulate_current_clamp(hh_model, stimulus)
     analysis = analyze_aps_from_result(result_sim)
 
     assert analysis.spike_count > 1
@@ -56,7 +56,7 @@ def test_multiple_spikes_hh_model(hh_model):
 def test_isi_length_consistent_with_spike_count(hh_model):
     """ISI list has exactly spike_count - 1 entries."""
     stimulus = _stimulus(100.0, 20.0, 10.0, 90.0)
-    result_sim = patch_sim.simulate_current_clamp(hh_model, stimulus)
+    result_sim = neuroclamp.simulate_current_clamp(hh_model, stimulus)
     analysis = analyze_aps_from_result(result_sim)
 
     assert len(analysis.isis) == max(0, analysis.spike_count - 1)
@@ -65,7 +65,7 @@ def test_isi_length_consistent_with_spike_count(hh_model):
 def test_firing_rate_from_isi(hh_model):
     """Firing rate equals 1000 / mean_isi when multiple spikes are present."""
     stimulus = _stimulus(150.0, 15.0, 10.0, 140.0)
-    result_sim = patch_sim.simulate_current_clamp(hh_model, stimulus)
+    result_sim = neuroclamp.simulate_current_clamp(hh_model, stimulus)
     analysis = analyze_aps_from_result(result_sim)
 
     assert analysis.spike_count >= 2
@@ -81,7 +81,7 @@ def test_firing_rate_from_isi(hh_model):
 def test_high_dvdt_threshold_reduces_detections(hh_model):
     """A higher dvdt_threshold detects fewer or equal spikes than a lower one."""
     stimulus = _stimulus(100.0, 20.0, 10.0, 90.0)
-    result_sim = patch_sim.simulate_current_clamp(hh_model, stimulus)
+    result_sim = neuroclamp.simulate_current_clamp(hh_model, stimulus)
 
     low = analyze_aps_from_result(result_sim, dvdt_threshold=10.0)
     high = analyze_aps_from_result(result_sim, dvdt_threshold=100.0)
@@ -97,7 +97,7 @@ def test_high_dvdt_threshold_reduces_detections(hh_model):
 def test_analyze_aps_from_result_matches_direct_call(hh_model):
     """analyze_aps_from_result matches calling analyze_aps with extracted arrays."""
     stimulus = _stimulus(80.0, 20.0, 5.0, 75.0)
-    result_sim = patch_sim.simulate_current_clamp(hh_model, stimulus)
+    result_sim = neuroclamp.simulate_current_clamp(hh_model, stimulus)
 
     via_result = analyze_aps_from_result(result_sim)
     direct = analyze_aps(result_sim["time"], result_sim["voltage"])

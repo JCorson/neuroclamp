@@ -1,12 +1,12 @@
-"""Tests for patch_sim.protocols.builders and build_protocol_from_preset."""
+"""Tests for neuroclamp.protocols.builders and build_protocol_from_preset."""
 
 import numpy as np
 import pytest
 
-import patch_sim
-from patch_sim.constants import ACTION_POTENTIAL, REPETITIVE_FIRING
-from patch_sim.presets import NEURON_PRESET_NAMES, PROTOCOL_PRESETS
-from patch_sim.protocols.builders import (
+import neuroclamp
+from neuroclamp.constants import ACTION_POTENTIAL, REPETITIVE_FIRING
+from neuroclamp.presets import NEURON_PRESET_NAMES, PROTOCOL_PRESETS
+from neuroclamp.protocols.builders import (
     build_current_protocol,
     build_voltage_protocol,
 )
@@ -149,8 +149,8 @@ def test_build_voltage_protocol_inactivation_rejects_min_gt_max() -> None:
 
 def test_build_protocol_from_preset_steady_state_inactivation() -> None:
     """The Steady-State Inactivation preset builds a valid multi-sweep protocol."""
-    result = patch_sim.build_protocol_from_preset(
-        patch_sim.constants.STEADY_STATE_INACTIVATION,
+    result = neuroclamp.build_protocol_from_preset(
+        neuroclamp.constants.STEADY_STATE_INACTIVATION,
         sampling_frequency=SAMPLING_FREQUENCY,
     )
     assert _is_valid_protocol_array(result)
@@ -158,14 +158,14 @@ def test_build_protocol_from_preset_steady_state_inactivation() -> None:
 
 
 # ---------------------------------------------------------------------------
-# build_protocol_from_preset — exported from patch_sim top-level
+# build_protocol_from_preset — exported from neuroclamp top-level
 # ---------------------------------------------------------------------------
 
 
 @pytest.mark.parametrize("preset_name", list(PROTOCOL_PRESETS.keys()))
 def test_build_protocol_from_preset_base(preset_name: str) -> None:
     """Each preset produces a valid protocol list when called with no neuron preset."""
-    result = patch_sim.build_protocol_from_preset(
+    result = neuroclamp.build_protocol_from_preset(
         preset_name,
         sampling_frequency=SAMPLING_FREQUENCY,
     )
@@ -179,7 +179,7 @@ def test_build_protocol_from_preset_repetitive_firing_with_neuron(
     neuron_name: str,
 ) -> None:
     """Repetitive Firing preset with every neuron preset returns a valid protocol."""
-    result = patch_sim.build_protocol_from_preset(
+    result = neuroclamp.build_protocol_from_preset(
         REPETITIVE_FIRING,
         neuron_preset=neuron_name,
         sampling_frequency=SAMPLING_FREQUENCY,
@@ -189,7 +189,7 @@ def test_build_protocol_from_preset_repetitive_firing_with_neuron(
 
 def test_build_protocol_from_preset_overrides_applied() -> None:
     """Caller overrides take precedence over the preset values."""
-    result = patch_sim.build_protocol_from_preset(
+    result = neuroclamp.build_protocol_from_preset(
         ACTION_POTENTIAL,
         sampling_frequency=SAMPLING_FREQUENCY,
         min_stimulus=5.0,
@@ -201,7 +201,7 @@ def test_build_protocol_from_preset_overrides_applied() -> None:
 
 def test_build_protocol_from_preset_multi_sweep() -> None:
     """F-I Curve preset produces multiple sweeps."""
-    result = patch_sim.build_protocol_from_preset(
+    result = neuroclamp.build_protocol_from_preset(
         "F-I Curve",
         sampling_frequency=SAMPLING_FREQUENCY,
     )
@@ -211,7 +211,7 @@ def test_build_protocol_from_preset_multi_sweep() -> None:
 
 def test_build_protocol_from_preset_voltage_clamp() -> None:
     """I-V Curve preset (voltage clamp) produces multiple sweeps."""
-    result = patch_sim.build_protocol_from_preset(
+    result = neuroclamp.build_protocol_from_preset(
         "I-V Curve",
         sampling_frequency=SAMPLING_FREQUENCY,
     )
@@ -222,4 +222,4 @@ def test_build_protocol_from_preset_voltage_clamp() -> None:
 def test_build_protocol_from_preset_unknown_raises() -> None:
     """Passing an unknown preset name raises KeyError."""
     with pytest.raises(KeyError, match="Unknown protocol preset"):
-        patch_sim.build_protocol_from_preset("NonExistentPreset")
+        neuroclamp.build_protocol_from_preset("NonExistentPreset")

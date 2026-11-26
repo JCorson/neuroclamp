@@ -1,4 +1,4 @@
-"""Tests for patch_sim_ui/log_handler.py.
+"""Tests for neuroclamp_ui/log_handler.py.
 
 Covers UILogRecord, StateLogHandler buffering/draining, the MAX_LOG_ENTRIES
 cap, thread safety of drain, and the setup_logging idempotency guard.
@@ -9,7 +9,7 @@ import threading
 
 import pytest
 
-from patch_sim_ui.log_handler import (
+from neuroclamp_ui.log_handler import (
     MAX_LOG_ENTRIES,
     StateLogHandler,
     UILogRecord,
@@ -63,12 +63,12 @@ def test_ui_log_record_fields() -> None:
     rec = UILogRecord(
         timestamp="12:00:00.000",
         level="INFO",
-        logger_name="patch_sim_ui",
+        logger_name="neuroclamp_ui",
         message="hello",
     )
     assert rec.timestamp == "12:00:00.000"
     assert rec.level == "INFO"
-    assert rec.logger_name == "patch_sim_ui"
+    assert rec.logger_name == "neuroclamp_ui"
     assert rec.message == "hello"
 
 
@@ -176,8 +176,8 @@ def test_drain_is_thread_safe() -> None:
 
 
 def test_setup_logging_attaches_handler() -> None:
-    """setup_logging registers a StateLogHandler on the patch_sim_ui logger."""
-    logger = logging.getLogger("patch_sim_ui")
+    """setup_logging registers a StateLogHandler on the neuroclamp_ui logger."""
+    logger = logging.getLogger("neuroclamp_ui")
     # Remove any existing handlers first.
     logger.handlers.clear()
 
@@ -185,9 +185,9 @@ def test_setup_logging_attaches_handler() -> None:
     assert any(isinstance(h, StateLogHandler) for h in logger.handlers)
 
 
-def test_setup_logging_attaches_handler_to_patch_sim():
-    """setup_logging registers a StateLogHandler on the patch_sim logger."""
-    logger = logging.getLogger("patch_sim")
+def test_setup_logging_attaches_handler_to_neuroclamp():
+    """setup_logging registers a StateLogHandler on the neuroclamp logger."""
+    logger = logging.getLogger("neuroclamp")
     logger.handlers.clear()
 
     setup_logging()
@@ -196,29 +196,29 @@ def test_setup_logging_attaches_handler_to_patch_sim():
 
 def test_setup_logging_is_idempotent():
     """Calling setup_logging twice does not add a second handler to either logger."""
-    for name in ("patch_sim_ui", "patch_sim"):
+    for name in ("neuroclamp_ui", "neuroclamp"):
         logging.getLogger(name).handlers.clear()
 
     setup_logging()
     setup_logging()
-    for name in ("patch_sim_ui", "patch_sim"):
+    for name in ("neuroclamp_ui", "neuroclamp"):
         handlers = logging.getLogger(name).handlers
         count = sum(1 for h in handlers if isinstance(h, StateLogHandler))
         assert count == 1
 
 
-def test_patch_sim_child_logger_captured():
-    """Log messages from patch_sim.* child loggers appear in the buffer."""
-    for name in ("patch_sim_ui", "patch_sim"):
+def test_neuroclamp_child_logger_captured():
+    """Log messages from neuroclamp.* child loggers appear in the buffer."""
+    for name in ("neuroclamp_ui", "neuroclamp"):
         logging.getLogger(name).handlers.clear()
 
     setup_logging()
 
-    child_logger = logging.getLogger("patch_sim.neuron")
+    child_logger = logging.getLogger("neuroclamp.neuron")
     child_logger.debug("test core library message")
 
     records = StateLogHandler.drain()
     assert len(records) == 1
     assert records[0].message == "test core library message"
     assert records[0].level == "DEBUG"
-    assert records[0].logger_name == "patch_sim.neuron"
+    assert records[0].logger_name == "neuroclamp.neuron"

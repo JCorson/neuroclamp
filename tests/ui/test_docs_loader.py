@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pytest
 
-from patch_sim_ui import docs_loader
+from neuroclamp_ui import docs_loader
 
 
 def _shipped_names() -> list[str]:

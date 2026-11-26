@@ -1,4 +1,4 @@
-"""Unit tests for patch_sim.analysis.passive_properties.
+"""Unit tests for neuroclamp.analysis.passive_properties.
 
 Covers subthreshold detection on flat traces, guard conditions with zero/short
 stimuli, and exponential fitting on synthetic step responses. Tests that drive
@@ -8,7 +8,7 @@ a real HH simulation live in tests/integration/test_passive_properties_simulatio
 import numpy as np
 import pytest
 
-from patch_sim.analysis.passive_properties import (
+from neuroclamp.analysis.passive_properties import (
     _SPIKE_GUARD_POST_MS,
     analyze_passive_properties,
     density_to_absolute_c_m,

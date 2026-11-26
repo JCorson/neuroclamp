@@ -11,20 +11,20 @@ hand-assembling channels.
 The presets are registered in two parallel structures:
 
 ```python
-import patch_sim
+import neuroclamp
 
 # Map of display name -> factory function.
-patch_sim.NEURON_PRESETS  # {"Squid Giant Axon (Classic HH)": <fn>, ...}
-patch_sim.NEURON_PRESET_NAMES  # ordered list of the display names
+neuroclamp.NEURON_PRESETS  # {"Squid Giant Axon (Classic HH)": <fn>, ...}
+neuroclamp.NEURON_PRESET_NAMES  # ordered list of the display names
 
 # Build a neuron from a preset:
-neuron = patch_sim.NEURON_PRESETS["Cortical Pyramidal Neuron"]()
+neuron = neuroclamp.NEURON_PRESETS["Cortical Pyramidal Neuron"]()
 ```
 
 Each cell type also defines **protocol adjustments** — per-cell tweaks to the
 default stimulus parameters (amplitude, duration, step range) so that each
 protocol lands in the physiologically interesting range for that neuron. They
-are exposed as `patch_sim.NEURON_PROTOCOL_ADJUSTMENTS` and applied automatically
+are exposed as `neuroclamp.NEURON_PROTOCOL_ADJUSTMENTS` and applied automatically
 by `build_protocol_from_preset` (see [Protocols & analysis](protocols-and-analysis.md)).
 
 The factory functions are also importable directly: `make_squid_giant_axon`,
@@ -118,4 +118,4 @@ Start from a factory to get a realistic baseline, then construct a modified
 `Neuron` (for example with different conductances, ion concentrations, or
 temperature). See the `Neuron` entry in the API reference for the full set of
 constructor parameters and the channel factory functions available under
-`patch_sim.channels`.
+`neuroclamp.channels`.

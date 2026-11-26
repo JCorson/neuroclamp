@@ -1,4 +1,4 @@
-"""Unit tests for pure logic in the patch_sim_ui state package.
+"""Unit tests for pure logic in the neuroclamp_ui state package.
 
 These tests exercise substate methods that contain no Reflex event-loop
 machinery.  Instantiation uses ``_reflex_internal_init=True`` (the same
@@ -21,8 +21,8 @@ os.environ.setdefault("PYTEST_CURRENT_TEST", "test_state.py::setup")
 
 pytest.importorskip("reflex")
 
-from patch_sim import NEURON_PRESETS  # noqa: E402
-from patch_sim.constants import (
+from neuroclamp import NEURON_PRESETS  # noqa: E402
+from neuroclamp.constants import (
     ACTION_POTENTIAL,
     CA1_PYRAMIDAL,
     CORTICAL_PYRAMIDAL,
@@ -38,9 +38,9 @@ from patch_sim.constants import (
     THALAMIC_RELAY,
     TRN,
 )
-from patch_sim_ui import constants  # noqa: E402
-from patch_sim_ui.log_handler import UILogRecord  # noqa: E402
-from patch_sim_ui.presets import (  # noqa: E402
+from neuroclamp_ui import constants  # noqa: E402
+from neuroclamp_ui.log_handler import UILogRecord  # noqa: E402
+from neuroclamp_ui.presets import (  # noqa: E402
     CHANNEL_NAME_TO_ID,
     DEFAULT_NEURON_PRESET,
     DEFAULT_PROTOCOL_PRESET,
@@ -51,13 +51,13 @@ from patch_sim_ui.presets import (  # noqa: E402
     _na_channel_activation_override,
     neuron_to_ui_state,
 )
-from patch_sim_ui.state import SimulationState  # noqa: E402
-from patch_sim_ui.state.analysis import AnalysisState  # noqa: E402
-from patch_sim_ui.state.log import LogState  # noqa: E402
-from patch_sim_ui.state.neuron import NeuronState  # noqa: E402
-from patch_sim_ui.state.protocol import ProtocolState  # noqa: E402
-from patch_sim_ui.state.visibility import VisibilityState  # noqa: E402
-from patch_sim_ui.sweep import Sweep  # noqa: E402
+from neuroclamp_ui.state import SimulationState  # noqa: E402
+from neuroclamp_ui.state.analysis import AnalysisState  # noqa: E402
+from neuroclamp_ui.state.log import LogState  # noqa: E402
+from neuroclamp_ui.state.neuron import NeuronState  # noqa: E402
+from neuroclamp_ui.state.protocol import ProtocolState  # noqa: E402
+from neuroclamp_ui.state.visibility import VisibilityState  # noqa: E402
+from neuroclamp_ui.sweep import Sweep  # noqa: E402
 from tests._rebound import post_release_rebound  # noqa: E402
 
 # ---------------------------------------------------------------------------
@@ -492,9 +492,9 @@ async def test_trn_hyperpolarization_burst_via_ui_build_neuron() -> None:
     fix in the simulation domain is insufficient — the UI build path must
     be exercised end-to-end.
     """
-    import patch_sim
-    from patch_sim.clamp_simulations import simulate_batch, simulate_current_clamp
-    from patch_sim.presets import build_protocol_from_preset
+    import neuroclamp
+    from neuroclamp.clamp_simulations import simulate_batch, simulate_current_clamp
+    from neuroclamp.presets import build_protocol_from_preset
 
     ns = _make_neuron_state()
     with patch.object(NeuronState, "get_state", new=_make_get_state_fn({})):
@@ -521,8 +521,8 @@ async def test_trn_hyperpolarization_burst_via_ui_build_neuron() -> None:
         result = results[sweep_idx]
         time_arr = np.asarray(result["time"])
         v_arr = np.asarray(result["voltage"])
-        ap_result = patch_sim.analyze_aps(time_arr, v_arr)
-        analysis = patch_sim.analyze_bursts(
+        ap_result = neuroclamp.analyze_aps(time_arr, v_arr)
+        analysis = neuroclamp.analyze_bursts(
             ap_result, total_duration_ms=float(time_arr[-1] - time_arr[0])
         )
 
@@ -1407,7 +1407,7 @@ async def test_load_neuron_preset_reapplies_protocol_neuron_overrides() -> None:
 
 def test_is_sodium_carrying_classifies_known_channels() -> None:
     """The predicate distinguishes Na from K, Ca, and Goldman-mixed channels."""
-    from patch_sim.channels import (
+    from neuroclamp.channels import (
         make_ical_channel,
         make_ih_channel,
         make_inap_channel,
@@ -1971,8 +1971,8 @@ async def test_stn_recovers_from_depol_block_via_ui_build_neuron() -> None:
     happily passes while the live UI silently loses sNaP and stalls
     around −30 mV.
     """
-    from patch_sim.clamp_simulations import simulate_current_clamp
-    from patch_sim.constants import SIM_SAMPLING_FREQ
+    from neuroclamp.clamp_simulations import simulate_current_clamp
+    from neuroclamp.constants import SIM_SAMPLING_FREQ
 
     ns = _make_neuron_state()
     with patch.object(NeuronState, "get_state", new=_make_get_state_fn({})):
@@ -2065,8 +2065,8 @@ async def test_cp_recovers_from_depol_block_via_ui_build_neuron() -> None:
     Without this test, an integration test that bypasses _build_neuron
     happily passes while the live UI silently loses sNa or sNaP.
     """
-    from patch_sim.clamp_simulations import simulate_current_clamp
-    from patch_sim.constants import SIM_SAMPLING_FREQ
+    from neuroclamp.clamp_simulations import simulate_current_clamp
+    from neuroclamp.constants import SIM_SAMPLING_FREQ
 
     ns = _make_neuron_state()
     with patch.object(NeuronState, "get_state", new=_make_get_state_fn({})):
@@ -2153,8 +2153,8 @@ async def test_ca1_recovers_from_depol_block_via_ui_build_neuron() -> None:
     Without this test, an integration test that bypasses _build_neuron
     happily passes while the live UI silently loses sNa or sNaP.
     """
-    from patch_sim.clamp_simulations import simulate_current_clamp
-    from patch_sim.constants import SIM_SAMPLING_FREQ
+    from neuroclamp.clamp_simulations import simulate_current_clamp
+    from neuroclamp.constants import SIM_SAMPLING_FREQ
 
     ns = _make_neuron_state()
     with patch.object(NeuronState, "get_state", new=_make_get_state_fn({})):
@@ -2242,8 +2242,8 @@ async def test_purkinje_recovers_from_depol_block_via_ui_build_neuron() -> None:
     Without this test, an integration test that bypasses _build_neuron
     happily passes while the live UI silently loses sNa or sNaP.
     """
-    from patch_sim.clamp_simulations import simulate_current_clamp
-    from patch_sim.constants import SIM_SAMPLING_FREQ
+    from neuroclamp.clamp_simulations import simulate_current_clamp
+    from neuroclamp.constants import SIM_SAMPLING_FREQ
 
     ns = _make_neuron_state()
     with patch.object(NeuronState, "get_state", new=_make_get_state_fn({})):
@@ -2523,7 +2523,7 @@ async def test_fingerprint_changes_when_preset_switch_changes_passive_channels()
 
 def test_record_export_context_captures_run_provenance() -> None:
     """_record_export_context stores metadata, neuron name and protocol name."""
-    from patch_sim_ui.state.simulation import _protocol_export_params
+    from neuroclamp_ui.state.simulation import _protocol_export_params
 
     st = _make_state()
     st._current_sweeps = [_make_sweep("a"), _make_sweep("b")]
@@ -2548,7 +2548,7 @@ def test_record_export_context_captures_run_provenance() -> None:
 
 def test_protocol_export_params_step_records_range() -> None:
     """A current-clamp Step records its timing and min/max/step range."""
-    from patch_sim_ui.state.simulation import _protocol_export_params
+    from neuroclamp_ui.state.simulation import _protocol_export_params
 
     ps = _make_protocol_state()
     ps.protocol_type = "Step"
@@ -2563,7 +2563,7 @@ def test_protocol_export_params_step_records_range() -> None:
 
 def test_protocol_export_params_ramp_records_endpoints_only() -> None:
     """A current-clamp Ramp records start/end current, not the step range."""
-    from patch_sim_ui.state.simulation import _protocol_export_params
+    from neuroclamp_ui.state.simulation import _protocol_export_params
 
     ps = _make_protocol_state()
     ps.protocol_type = "Ramp"
@@ -2576,7 +2576,7 @@ def test_protocol_export_params_ramp_records_endpoints_only() -> None:
 
 def test_protocol_export_params_voltage_clamp_records_holding_voltage() -> None:
     """Every voltage-clamp protocol records its holding voltage in mV."""
-    from patch_sim_ui.state.simulation import _protocol_export_params
+    from neuroclamp_ui.state.simulation import _protocol_export_params
 
     ps = _make_protocol_state()
     ps.clamp_mode = "Voltage Clamp"

@@ -6,13 +6,13 @@ from typing import Any
 import numpy as np
 import pytest
 
-from patch_sim.constants import (
+from neuroclamp.constants import (
     ACTION_POTENTIAL,
     IV_CURVE,
     SQUID_GIANT_AXON,
 )
-from patch_sim_ui.api import exports
-from patch_sim_ui.state import SimulationState
+from neuroclamp_ui.api import exports
+from neuroclamp_ui.state import SimulationState
 from tests.e2e.conftest import StateTree, patch_get_state
 
 
@@ -102,7 +102,7 @@ async def _export(tree: StateTree) -> str:
     assert len(exports._STORE) == 1
     token = next(iter(exports._STORE))
     filename, payload = exports.get(token)
-    assert filename.startswith("patch-sim_squid-giant-axon-classic-hh_")
+    assert filename.startswith("neuroclamp_squid-giant-axon-classic-hh_")
     assert filename.endswith(".csv")
     return payload.decode("utf-8")
 

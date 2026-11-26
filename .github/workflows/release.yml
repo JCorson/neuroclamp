@@ -15,8 +15,8 @@ on:
     paths:
       - pyproject.toml
       - uv.lock
-      - patch_sim/**
-      - patch_sim_ui/**
+      - neuroclamp/**
+      - neuroclamp_ui/**
       - tools/check_dist.py
       - tools/smoke_test.py
       - .github/workflows/release.yml
@@ -84,25 +84,25 @@ jobs:
           python -I - <<'EOF'
           import importlib.util
 
-          import patch_sim
-          from patch_sim import simulate_current_clamp, step_current
+          import neuroclamp
+          from neuroclamp import simulate_current_clamp, step_current
 
-          neuron = patch_sim.NEURON_PRESETS["Squid Giant Axon (Classic HH)"]()
+          neuron = neuroclamp.NEURON_PRESETS["Squid Giant Axon (Classic HH)"]()
           stimulus = step_current(duration=20.0, current_amplitude=15.0)
           result = simulate_current_clamp(neuron, current_external=stimulus)
-          aps = patch_sim.analyze_aps(result["time"], result["voltage"])
+          aps = neuroclamp.analyze_aps(result["time"], result["voltage"])
           assert aps.spike_count >= 1, aps.spike_count
           for module in ("reflex", "plotly", "rxconfig"):
               assert importlib.util.find_spec(module) is None, module
           print("core library OK:", aps.spike_count, "spikes")
           EOF
-          patch-sim --help
-          patch-sim --version
-          if patch-sim ui 2> ui.err; then
-            echo "patch-sim ui should fail without the ui extra"
+          neuroclamp --help
+          neuroclamp --version
+          if neuroclamp ui 2> ui.err; then
+            echo "neuroclamp ui should fail without the ui extra"
             exit 1
           fi
-          grep -q 'pip install "patch-sim\[ui\]"' ui.err
+          grep -q 'pip install "neuroclamp\[ui\]"' ui.err
           if grep -q Traceback ui.err; then cat ui.err; exit 1; fi
 
   smoke-ui:
@@ -130,19 +130,19 @@ jobs:
           "$RUNNER_TEMP/venv/bin/python" -I -c \
             "import importlib.util as u; assert u.find_spec('rxconfig') is None"
 
-      - name: Start patch-sim ui
+      - name: Start neuroclamp ui
         working-directory: ${{ runner.temp }}
         run: |
-          nohup venv/bin/patch-sim ui --no-browser --port 3000 > patch-sim.log 2>&1 &
-          echo $! > patch-sim.pid
+          nohup venv/bin/neuroclamp ui --no-browser --port 3000 > neuroclamp.log 2>&1 &
+          echo $! > neuroclamp.pid
 
       - name: Wait for the app
         run: |
           # The first launch installs bun and builds the frontend.
           for _ in $(seq 1 120); do
             if curl -fsS --max-time 5 http://localhost:3000/ping; then exit 0; fi
-            if ! kill -0 "$(cat "$RUNNER_TEMP/patch-sim.pid")" 2>/dev/null; then
-              echo "patch-sim exited before the app came up"
+            if ! kill -0 "$(cat "$RUNNER_TEMP/neuroclamp.pid")" 2>/dev/null; then
+              echo "neuroclamp exited before the app came up"
               exit 1
             fi
             sleep 5
@@ -160,11 +160,11 @@ jobs:
         run: |
           uv sync --frozen --no-install-project --only-group=browser
           uv run --frozen --no-sync playwright install --with-deps chromium
-          PATCH_SIM_URL=http://localhost:3000 uv run --frozen --no-sync python tools/smoke_test.py
+          NEUROCLAMP_URL=http://localhost:3000 uv run --frozen --no-sync python tools/smoke_test.py
 
-      - name: patch-sim logs
+      - name: neuroclamp logs
         if: always()
-        run: cat "$RUNNER_TEMP/patch-sim.log" || true
+        run: cat "$RUNNER_TEMP/neuroclamp.log" || true
 
   publish-testpypi:
     needs: [smoke-core, smoke-ui]
@@ -175,7 +175,7 @@ jobs:
     runs-on: ubuntu-latest
     environment:
       name: testpypi
-      url: https://test.pypi.org/p/patch-sim
+      url: https://test.pypi.org/p/neuroclamp
     permissions:
       id-token: write
     steps:
@@ -196,7 +196,7 @@ jobs:
     runs-on: ubuntu-latest
     environment:
       name: pypi
-      url: https://pypi.org/p/patch-sim
+      url: https://pypi.org/p/neuroclamp
     permissions:
       id-token: write
     steps:

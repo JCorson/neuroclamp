@@ -5,10 +5,14 @@ import dataclasses
 import numpy as np
 import pytest
 
-from patch_sim.clamp_simulations import simulate_current_clamp
-from patch_sim.constants import DOPAMINERGIC, PURKINJE, SIM_SAMPLING_FREQ, STN, TRN
-from patch_sim.neuron import Neuron  # noqa: F401  (used in type hints below)
-from patch_sim.presets import NEURON_PRESET_NAMES, NEURON_PRESETS, make_squid_giant_axon
+from neuroclamp.clamp_simulations import simulate_current_clamp
+from neuroclamp.constants import DOPAMINERGIC, PURKINJE, SIM_SAMPLING_FREQ, STN, TRN
+from neuroclamp.neuron import Neuron  # noqa: F401  (used in type hints below)
+from neuroclamp.presets import (
+    NEURON_PRESET_NAMES,
+    NEURON_PRESETS,
+    make_squid_giant_axon,
+)
 
 # Purkinje is a pacemaker with an UNSTABLE zero-current equilibrium at v_rest.
 # Starting from v_rest = −65 mV it drifts below threshold — the stability

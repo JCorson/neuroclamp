@@ -2,8 +2,8 @@
 
 import pytest
 
-from patch_sim.analysis.ap_metrics import APAnalysisResult
-from patch_sim.analysis.sfa import SFAAnalysisResult, analyze_sfa, compute_sfa
+from neuroclamp.analysis.ap_metrics import APAnalysisResult
+from neuroclamp.analysis.sfa import SFAAnalysisResult, analyze_sfa, compute_sfa
 
 
 def _make_ap_result(isis: list[float]) -> APAnalysisResult:
