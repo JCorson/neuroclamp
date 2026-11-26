@@ -12,7 +12,7 @@
 //!   step, never at intermediate sub-steps.
 //! - φ (the Q10 factor) multiplies every rate.
 
-use crate::expr::py_max;
+use crate::expr::{int_pow, py_max};
 use crate::spec::{ChannelSpec, ModelSpec};
 
 /// Simulation output as one row-major block, `n_steps × n_columns`.
@@ -81,9 +81,7 @@ impl Model {
     fn channel_current(&self, ch: &ChannelSpec, v: f64, gates: &[f64], e_ca: f64) -> f64 {
         let mut g = ch.g_max;
         for &(idx, power) in &ch.gates {
-            // `powf` calls C `pow`, like Python's `x ** p`, which keeps squid
-            // bit-identical to the Python backend.
-            g *= gates[idx].powf(f64::from(power));
+            g *= int_pow(gates[idx], power);
         }
         let e_rev = if ch.carries_calcium {
             e_ca

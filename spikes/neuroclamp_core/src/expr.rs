@@ -40,6 +40,19 @@ pub fn safe_cosh(x: f64) -> f64 {
     }
 }
 
+/// `x` raised to an integer power, matching Python's `x ** n` on floats.
+///
+/// Python calls C `pow`. For `n = 1` that returns `x` exactly, and for
+/// `n = 2` a single multiplication is the correctly rounded result, so these
+/// fast paths are bit-identical; other powers still call `pow`.
+pub fn int_pow(x: f64, n: i32) -> f64 {
+    match n {
+        1 => x,
+        2 => x * x,
+        _ => x.powf(f64::from(n)),
+    }
+}
+
 /// Python's `max(a, b)`: returns `a` unless `b` is strictly greater.
 ///
 /// Rust's `f64::max` treats NaN differently, so this keeps the two backends
@@ -101,9 +114,8 @@ impl Expr {
             }
             Expr::Sech { k, vh, s } => k / safe_cosh((v - vh) / s),
             Expr::Hill { kd, n } => {
-                // Python's `x ** n` on floats calls C `pow`, as does `powf`.
-                let ca_n = ca.powf(f64::from(*n));
-                ca_n / (ca_n + kd.powf(f64::from(*n)))
+                let ca_n = int_pow(ca, *n);
+                ca_n / (ca_n + int_pow(*kd, *n))
             }
             Expr::Add { a, b } => a.eval(v, ca) + b.eval(v, ca),
             Expr::Sub { a, b } => a.eval(v, ca) - b.eval(v, ca),
