@@ -40,14 +40,25 @@ The project is split into two cleanly separated layers:
 
 ## Installation
 
-The project uses [uv](https://docs.astral.sh/uv/) for dependency management.
+Install from PyPI:
+
+```
+pip install patch-sim           # core library only
+pip install "patch-sim[ui]"     # library plus the web UI
+```
+
+and start the web UI from any directory with `patch-sim ui` (run
+`patch-sim ui --help` for its options). The first launch builds the web
+frontend, which takes a few minutes and needs internet access.
+
+To work from a source checkout, use [uv](https://docs.astral.sh/uv/):
 
 ```
 # Core library only
 uv sync --frozen
 
 # Core library plus the web UI
-uv sync --frozen --group=ui
+uv sync --frozen --extra=ui
 ```
 
 ## Running the UI

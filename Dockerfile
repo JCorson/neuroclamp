@@ -36,10 +36,12 @@ RUN --mount=type=cache,target=/home/app/.cache/uv,uid=1000,gid=1000 \
     --mount=type=bind,source=uv.lock,target=uv.lock \
     --mount=type=bind,source=pyproject.toml,target=pyproject.toml \
     --mount=type=bind,source=.python-version,target=.python-version \
-    uv sync --frozen --no-dev --group=ui --no-install-project
+    uv sync --frozen --no-dev --extra=ui --no-install-project
 
-# The project has no build system, so uv never installs it: the app imports
-# patch_sim and patch_sim_ui straight from /app.
+# The project itself is never installed (--no-install-project): the app imports
+# patch_sim and patch_sim_ui straight from /app, and Reflex reads the root
+# rxconfig.py from the working directory. The app copies its static files into
+# /app/assets when it starts.
 COPY --chown=app:app . .
 
 # Install bun and the frontend packages and compile the frontend once, so the

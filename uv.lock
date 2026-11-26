@@ -1192,11 +1192,18 @@ wheels = [
 [[package]]
 name = "patch-sim"
 version = "0.1.0"
-source = { virtual = "." }
+source = { editable = "." }
 dependencies = [
     { name = "matplotlib" },
     { name = "numpy" },
     { name = "scipy" },
+]
+
+[package.optional-dependencies]
+ui = [
+    { name = "platformdirs" },
+    { name = "plotly" },
+    { name = "reflex", extra = ["pydantic"] },
 ]
 
 [package.dev-dependencies]
@@ -1215,17 +1222,17 @@ docs = [
     { name = "mkdocs-material" },
     { name = "mkdocstrings", extra = ["python"] },
 ]
-ui = [
-    { name = "plotly" },
-    { name = "reflex", extra = ["pydantic"] },
-]
 
 [package.metadata]
 requires-dist = [
     { name = "matplotlib", specifier = ">=3.11.1" },
     { name = "numpy", specifier = ">=2.5.1" },
+    { name = "platformdirs", marker = "extra == 'ui'", specifier = ">=4" },
+    { name = "plotly", marker = "extra == 'ui'", specifier = ">=6.9.0" },
+    { name = "reflex", extras = ["pydantic"], marker = "extra == 'ui'", specifier = ">=0.11.0" },
     { name = "scipy", specifier = ">=1.18.0" },
 ]
+provides-extras = ["ui"]
 
 [package.metadata.requires-dev]
 browser = [{ name = "playwright", specifier = ">=1.49.0" }]
@@ -1240,10 +1247,6 @@ docs = [
     { name = "mkdocs", specifier = ">=1.6.1" },
     { name = "mkdocs-material", specifier = ">=9.6.0" },
     { name = "mkdocstrings", extras = ["python"], specifier = ">=0.27.0" },
-]
-ui = [
-    { name = "plotly", specifier = ">=6.9.0" },
-    { name = "reflex", extras = ["pydantic"], specifier = ">=0.10.1" },
 ]
 
 [[package]]

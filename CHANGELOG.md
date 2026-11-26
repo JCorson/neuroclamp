@@ -104,6 +104,15 @@ conductance-based (Hodgkin-Huxley) neuron models. It ships as a Python library
 - A Docker image and Compose file for running the app without installing
   Python, uv, or Node.
 
+#### Installation
+
+- patch-sim installs from PyPI: `pip install patch-sim` for the library, or
+  `pip install "patch-sim[ui]"` for the library and the web app. The library
+  ships type annotations (`py.typed`) for type checkers.
+- The `patch-sim ui` command starts the web app from any directory, with
+  `--port`, `--host`, `--no-browser`, `--workdir`, `--reset` and `--verbose`
+  options. It opens the app in your browser once the server is ready.
+
 #### Documentation
 
 - A library documentation site covering the presets, protocols, and analysis,
