@@ -22,6 +22,7 @@ node classes move into `neuroclamp/rates.py` and this directory should be delete
 | `benchmark.py` | Times today's rates vs. trees vs. codegen, with the `uses_calcium` tabulation fix patched in. |
 | `backend.py` | `simulate_current_clamp(neuron, current, backend="python" \| "rust")`. The Rust path lowers the neuron and runs `spikes/neuroclamp_core`, returning the library's structured array. |
 | `verify_rust.py` | Compares every result field from the two backends on all presets, and times them. Needs the extension built (see `spikes/neuroclamp_core/README.md`). |
+| `verify_golden.py` | Checks tree rates (all 171 runs) and the Rust backend (90 current-clamp runs) against the library's golden traces in `tests/integration/golden/`, with the same tolerance as the test suite. |
 
 ## Running
 
@@ -33,6 +34,7 @@ uv run --frozen python spikes/rate_expr/verify_sims.py
 uv run --frozen python spikes/rate_expr/lower.py
 uv run --frozen python spikes/rate_expr/benchmark.py
 uv run --frozen python spikes/rate_expr/verify_rust.py  # after building the crate
+uv run --frozen python spikes/rate_expr/verify_golden.py
 ```
 
 ## Results (2026-11-26, 4-core container)
