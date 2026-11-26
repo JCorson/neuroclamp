@@ -12,6 +12,18 @@ listed under **Changed** or **Removed**.
 
 ## [Unreleased]
 
+### Added
+
+- Rate expressions in `neuroclamp.rates` for defining gating kinetics as data
+  rather than as Python functions: the forms `Exp`, `Sigmoid`, `ExpLinear`,
+  `Sech`, `Hill` (Ca²⁺-dependent) and `Const`, combined with `+`, `-`, `*`,
+  `/` and `Max`, plus `inf_tau()` to build a gate's rates from its steady
+  state and time constant. Expressions can be used anywhere a rate function
+  can, compare by value, and pickle for `simulate_batch`.
+- `Rate.uses_calcium` reports whether a rate depends on intracellular Ca²⁺.
+  Expressions derive it automatically; a custom `Rate` subclass that does not
+  declare it is treated as Ca²⁺-dependent.
+
 ## [0.1.0] - 2026-11-25
 
 The first release of neuroclamp, a patch-clamp experiment simulator built on
