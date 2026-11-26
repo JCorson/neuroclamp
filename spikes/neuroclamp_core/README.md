@@ -58,7 +58,7 @@ does not need to link against libpython.
 - **Squid: bit-identical** (max difference 0.0 in every field).
 - All 9 presets, including the five with Ca²⁺ dynamics: voltage within
   1.2e-10 mV.
-- Golden traces (`tests/integration/golden/`): all 90 current-clamp runs
+- Golden traces (`tests/parity/golden/`): all 90 current-clamp runs
   (every preset × current-clamp protocol preset, including the 3 s and 1 s
   protocols) pass, using at most 12% of the timing-aware tolerance band.
   Check with `uv run --frozen python spikes/rate_expr/verify_golden.py`.

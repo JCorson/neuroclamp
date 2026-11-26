@@ -1,13 +1,18 @@
-"""Golden-trace references: generation, storage, and comparison.
+"""Golden-trace references for parity checks: generation, storage, comparison.
 
-A golden trace is a stored copy of what the library produces today for one
-sweep of one protocol preset on one neuron preset, run exactly as the app runs
-it (:func:`neuroclamp.build_protocol_from_preset` with the neuron's protocol
+A golden trace is a stored copy of what the library produces for one sweep of
+one protocol preset on one neuron preset, run exactly as the app runs it
+(:func:`neuroclamp.build_protocol_from_preset` with the neuron's protocol
 adjustments, then a fresh ``simulate_current_clamp`` or
-``simulate_voltage_clamp`` per sweep). The golden-trace tests fail when the
-library's numerical output changes, which guards refactors that should be
-behavior-preserving (for example, expressing rate functions as data) and gives
-an alternative backend a reference to match.
+``simulate_voltage_clamp`` per sweep).
+
+The references are a **baseline, not a definition of correct output**. They
+answer one question: does a change that should be behavior-preserving (an
+integrator refactor, rate functions expressed as data, an alternative backend)
+still reproduce the baseline? A mismatch means the output changed, not that it
+is wrong; correctness is checked by the behavioral tests in
+``tests/integration``. Intentional changes to presets or kinetics are expected
+to make these references stale.
 
 Coverage is every neuron preset × every protocol preset, using the first,
 middle, and last sweep of each protocol to keep the runtime manageable.
@@ -30,10 +35,12 @@ Any real change to the kinetics moves spikes far more than
 :data:`TIME_TOL_MS` and changes subthreshold voltages far more than
 :data:`ATOL`.
 
-**Regenerating.** Only regenerate when a change to simulation results is
-intended, and add a ``CHANGELOG.md`` entry for it::
+**Workflow.** Before starting behavior-preserving work, regenerate the
+baseline from ``main`` so it reflects the current presets, then run the parity
+tests on the work branch::
 
-    uv run --frozen python -m tests.integration._golden
+    uv run --frozen python -m tests.parity._golden   # on main: refresh baseline
+    uv run --frozen -m pytest tests/parity           # on the work branch
 """
 
 from __future__ import annotations

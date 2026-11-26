@@ -107,18 +107,19 @@ There are two documentation tracks, plus the docstrings that feed the API refere
 
 ## Testing conventions
 
-Tests are split into four buckets under `tests/`:
+Tests are split into five buckets under `tests/`:
 
 - `tests/unit/` — fast, pure-function tests; no simulation runs. Run alone during development: `uv run --frozen -m pytest tests/unit`
 - `tests/integration/` — end-to-end protocol → simulation pipeline tests. Simulation-calling tests extracted from mixed files are named `*_simulation.py`.
 - `tests/ui/` — Reflex and plotting layer tests; skipped when `reflex` is not installed.
 - `tests/e2e/` — headless full-pipeline tests that drive Reflex state handlers directly (no dev server, no browser). **Not in default `testpaths`** — run explicitly with `uv run --frozen -m pytest tests/e2e`.
+- `tests/parity/` — golden-trace parity tests for behavior-preserving changes. **Not in default `testpaths`** — run explicitly with `uv run --frozen -m pytest tests/parity` (see below).
 
 The shared `hh_model` fixture lives in `tests/conftest.py` and is discoverable by all four subdirectories. `tests/e2e/conftest.py` adds e2e-specific fixtures.
 
 Pytest is configured with `-n auto --dist=loadscope` (parallel via xdist, tests in the same module pinned to the same worker).
 
-`tests/integration/test_golden_traces.py` compares every neuron preset × protocol preset against stored reference traces in `tests/integration/golden/`. A failure there means simulation results changed. Do not loosen the tolerances to make it pass; if the change is intended, regenerate with `uv run --frozen python -m tests.integration._golden` and add a `CHANGELOG.md` entry, since changed simulation results are user-visible.
+`tests/parity/` compares every neuron preset × protocol preset against a stored baseline in `tests/parity/golden/`. The baseline records what `main` produced, not what is correct, so intentional tuning of presets or kinetics is expected to make it stale and does not need it updated. Use it for changes that should not alter results (integrator refactors, rate functions expressed as data, alternative backends): refresh the baseline on `main` with `uv run --frozen python -m tests.parity._golden`, then run `uv run --frozen -m pytest tests/parity` on the work branch. During such work a failure is a regression; do not loosen the tolerances to make it pass.
 
 Additional conventions:
 - Use plain functions, not test classes
@@ -198,6 +199,8 @@ which covers `tests/unit`, `tests/integration` and `tests/ui`) plus
 `/uv run --frozen -m pytest tests/e2e`, which is outside the default
 `testpaths`. `tests/integration` runs in CI only on a cron job, so this
 local run is its only pre-merge check. If the branch touches `docs/` or
-public docstrings, also run the strict docs build.
+public docstrings, also run the strict docs build. If the branch refactors
+simulation code without meaning to change results, also run
+`uv run --frozen -m pytest tests/parity` against a baseline refreshed on `main`.
 
 **Before finishing a task that does not end in a PR:** run the pre-PR checks.

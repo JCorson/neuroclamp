@@ -1,7 +1,7 @@
 """Check alternative implementations against the library's golden traces.
 
 Uses the same references and tolerance bands as
-``tests/integration/test_golden_traces.py``:
+``tests/parity/test_golden_traces.py``:
 
 - ``tree``: expression-tree rates on the Python backend, every run (a stand-in
   for the rates-as-data migration).
@@ -21,7 +21,7 @@ from translate import to_tree_neuron
 
 import neuroclamp as nc
 from neuroclamp.constants import CURRENT_CLAMP
-from tests.integration._golden import (
+from tests.parity._golden import (
     GoldenRun,
     _protocol,
     compare,
