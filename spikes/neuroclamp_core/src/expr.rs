@@ -40,16 +40,19 @@ pub fn safe_cosh(x: f64) -> f64 {
     }
 }
 
-/// `x` raised to an integer power, matching Python's `x ** n` on floats.
+/// `x` raised to an integer power (gate powers and Hill coefficients).
 ///
-/// Python calls C `pow`. For `n = 1` that returns `x` exactly, and for
-/// `n = 2` a single multiplication is the correctly rounded result, so these
-/// fast paths are bit-identical; other powers still call `pow`.
+/// Python's `x ** n` calls C `pow`. For `n = 1` that returns `x` exactly,
+/// and for `n = 2` one multiplication is the correctly rounded result, so
+/// those cases are bit-identical to Python. Higher powers use repeated
+/// multiplication (`powi`), which is much cheaper than `pow` but rounds
+/// differently: traces then differ from Python by ~1e-12 mV, far inside the
+/// `tests/parity` tolerance.
 pub fn int_pow(x: f64, n: i32) -> f64 {
     match n {
         1 => x,
         2 => x * x,
-        _ => x.powf(f64::from(n)),
+        _ => x.powi(n),
     }
 }
 
