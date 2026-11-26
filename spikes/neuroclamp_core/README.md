@@ -52,38 +52,66 @@ does not need to link against libpython.
 
 ## Results (2026-11-26, 4-core container)
 
-150 ms current step, compared field by field (voltage, every channel current,
-`Itotal`, every gate, `ca_i`) against `neuroclamp.simulate_current_clamp`:
+**Agreement** with `neuroclamp.simulate_current_clamp`, compared field by
+field (voltage, every channel current, `Itotal`, every gate, `ca_i`):
 
-- **Squid: bit-identical** (max difference 0.0 in every field).
 - All 9 presets, including the five with Ca²⁺ dynamics: voltage within
-  1.2e-10 mV.
-- Golden traces (`tests/parity/golden/`): all 90 current-clamp runs
-  (every preset × current-clamp protocol preset, including the 3 s and 1 s
-  protocols) pass, using at most 12% of the timing-aware tolerance band.
-  Check with `uv run --frozen python spikes/rate_expr/verify_golden.py`.
+  ~1e-10 mV on a 150 ms step. Squid differs by 3.8e-12 mV, because powers of
+  3 and up use `powi` instead of C `pow` (see `int_pow` in `src/expr.rs`).
+- Golden traces (`tests/parity/golden/`): all 90 current-clamp runs pass,
+  using at most 2% of the tolerance band. Check with
+  `uv run --frozen python spikes/rate_expr/verify_golden.py --rust-only`.
 
-Speed (squid / Purkinje):
+**Per step** (`cargo run --release --no-default-features --example bench`):
 
-| | Squid | Purkinje |
-|---|---|---|
-| Python backend, 150 ms | 134 ms | 717 ms |
-| Rust backend end to end, 150 ms | 4.4 ms | 19.4 ms |
-| Rust integrator alone, per step | 591 ns | 2.9 µs |
+| Preset | Python | Rust, first port | Rust now |
+|---|---|---|---|
+| Squid | ~23 µs | 595 ns | **231 ns** |
+| Purkinje | ~132 µs | 2,815 ns | **1,106 ns** |
+| CA1 | n/a | 3,296 ns | **1,294 ns** |
+| STN | n/a | 3,128 ns | **1,182 ns** |
 
-That is ~40× per step, below the 100 to 200× first estimated on #410. Swapping
-`powf` for `powi` on gate powers saves only ~20% (and breaks bit-identity), so
-the remaining cost is probably the ~25 `exp` calls per step and the recursive
-tree walk. Profiling is the benchmarking step on #410.
+That is ~100× per step against Python. What changed from the first port,
+measured one change at a time:
+
+1. Reuse the k1 currents for the output row, and compute E_Ca once per
+   evaluation (bit-identical): squid 595 → 307 ns.
+2. Evaluate `inf` and `tau` once for steady-state gates (the `inf_tau` form,
+   bit-identical): Purkinje, CA1 and STN −34 to −38%.
+3. Skip C `pow` for powers 1 and 2 (bit-identical): heavy presets −30%.
+4. `powi` for powers 3 and up (not bit-identical): a further 6 to 15%.
+
+Tried and dropped: the `libm` crate instead of glibc (15 to 35% slower), and
+precomputed reciprocal voltage scales (0 to 7%, not worth the semantics). The
+remaining cost is mostly `exp` itself and the recursive tree walk.
+
+**Whole protocol families** (`uv run --frozen python spikes/rate_expr/benchmark_batch.py`),
+wall time from Python:
+
+| Family | Python serial | `neuroclamp.simulate_batch` | Rust batch (`rayon`) |
+|---|---|---|---|
+| Squid F-I, 9 sweeps | 0.54 s | 0.19 s | **3.9 ms** |
+| Purkinje F-I, 9 sweeps | 3.08 s | 1.03 s | **14.1 ms** |
+| CA1 F-I, 11 sweeps | 10.44 s | 2.96 s | **52.6 ms** |
+| CA1 hyperpolarization steps, 5 × 900 ms | 12.97 s | 5.09 s | **96.9 ms** |
+
+## Profiling
+
+```bash
+cd spikes/neuroclamp_core
+CARGO_PROFILE_RELEASE_DEBUG=true cargo build --release --no-default-features --example profile
+valgrind --tool=callgrind target/release/examples/profile ca1
+callgrind_annotate --inclusive=no callgrind.out.<pid> | head -30
+```
+
+Benchmark fixtures in `bench_fixtures/` are regenerated with
+`uv run --frozen python spikes/rate_expr/dump_bench_fixtures.py` whenever
+presets or the spec format change.
 
 ## Deliberate limits
 
 - Current clamp only; voltage clamp is not ported.
-- Gates use the `alpha_beta` form. The explicit `inf_tau` form from the design
-  is not implemented, so `inf`/`tau` subtrees are evaluated twice for those gates.
 - A Ca²⁺-carrying channel without Ca²⁺ dynamics is rejected (`neuroclamp` falls
   back to a 1e-9 mM floor there; no preset does this).
-- One simulation per call. Batching sweeps across threads (`rayon`) is future
-  work; the bindings already release the GIL with `py.detach`.
 - The spec is JSON-encoded on every call (0.05 to 0.4 ms) to key the model
   cache in `backend.py`.
