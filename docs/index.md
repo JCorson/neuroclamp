@@ -43,8 +43,8 @@ The project is split into two cleanly separated layers:
 Install from PyPI:
 
 ```
-pip install patch-sim           # core library only
-pip install "patch-sim[ui]"     # library plus the web UI
+pip install patch-clamp-sim         # core library only
+pip install "patch-clamp-sim[ui]"   # library plus the web UI
 ```
 
 and start the web UI from any directory with `patch-sim ui` (run

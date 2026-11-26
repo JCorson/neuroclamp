@@ -1,7 +1,9 @@
 """Tests for CSV export of simulation results (patch_sim_ui/export.py)."""
 
 import io
+import tomllib
 from datetime import datetime
+from pathlib import Path
 
 import numpy as np
 import pytest
@@ -200,6 +202,24 @@ def test_build_export_metadata_contents() -> None:
     assert meta["sweep s01"] == "-10 mV"
     assert meta["sweep s02"] == "+0 mV"
     assert "C_m" in meta
+
+
+def test_build_export_metadata_records_the_installed_version() -> None:
+    """The recorded patch_sim_version is the project version, not a fallback."""
+    pyproject = Path(__file__).parents[2] / "pyproject.toml"
+    expected = tomllib.loads(pyproject.read_text())["project"]["version"]
+    meta = dict(
+        build_export_metadata(
+            patch_sim.Neuron(),
+            neuron_preset="Squid",
+            protocol_preset="",
+            clamp_mode=CURRENT_CLAMP,
+            protocol_type="Step",
+            protocol_params={},
+            sweep_labels=["sweep"],
+        )
+    )
+    assert meta["patch_sim_version"] == expected
 
 
 def test_nan_in_data_is_written_as_empty_cell() -> None:

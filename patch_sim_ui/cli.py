@@ -23,7 +23,7 @@ from collections.abc import Sequence
 from pathlib import Path
 
 #: Printed when ``patch-sim ui`` runs without the ``ui`` extra installed.
-UI_EXTRA_MESSAGE = 'The web UI requires the ui extra: pip install "patch-sim[ui]"'
+UI_EXTRA_MESSAGE = 'The web UI requires the ui extra: pip install "patch-clamp-sim[ui]"'
 
 #: Environment variable that overrides the default working directory.
 WORKDIR_ENV_VAR = "PATCH_SIM_WORKDIR"
@@ -83,7 +83,7 @@ def configure_logging(verbose: bool = False) -> None:
 
 
 def _package_version() -> str:
-    """Return the installed ``patch-sim`` version.
+    """Return the installed ``patch-clamp-sim`` distribution version.
 
     Returns:
         The distribution version, or ``"0+unknown"`` if the package metadata
@@ -91,7 +91,7 @@ def _package_version() -> str:
         checkout).
     """
     try:
-        return importlib.metadata.version("patch-sim")
+        return importlib.metadata.version("patch-clamp-sim")
     except importlib.metadata.PackageNotFoundError:
         return "0+unknown"
 

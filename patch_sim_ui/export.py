@@ -53,7 +53,7 @@ def _patch_sim_version() -> str:
         The distribution version, or ``"unknown"`` when not installed.
     """
     try:
-        return importlib_metadata.version("patch_sim")
+        return importlib_metadata.version("patch-clamp-sim")
     except importlib_metadata.PackageNotFoundError:
         return "unknown"
 

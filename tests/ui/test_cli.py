@@ -17,6 +17,7 @@ import socket
 import subprocess
 import sys
 import time
+import tomllib
 from pathlib import Path
 
 import pytest
@@ -34,6 +35,7 @@ import os
 import signal
 import sys
 import time
+import tomllib
 from pathlib import Path
 
 record = Path(os.environ["FAKE_REFLEX_RECORD"])
@@ -203,8 +205,10 @@ def test_version_flag_prints_the_package_version(
     with pytest.raises(SystemExit) as excinfo:
         cli.main(["--version"])
 
+    pyproject = Path(__file__).parents[2] / "pyproject.toml"
+    expected = tomllib.loads(pyproject.read_text())["project"]["version"]
     assert excinfo.value.code == 0
-    assert capsys.readouterr().out.startswith("patch-sim ")
+    assert capsys.readouterr().out == f"patch-sim {expected}\n"
 
 
 @pytest.mark.parametrize("value", ["0", "70000", "abc"])

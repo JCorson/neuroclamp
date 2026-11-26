@@ -36,8 +36,8 @@ Key features:
 ### Installing from PyPI
 
 ```
-pip install patch-sim           # core library only
-pip install "patch-sim[ui]"     # library plus the web UI
+pip install patch-clamp-sim         # core library only
+pip install "patch-clamp-sim[ui]"   # library plus the web UI
 ```
 
 Start the web UI from any directory:

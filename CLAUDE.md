@@ -72,7 +72,11 @@ uv run reflex run
 The app serves on `http://localhost:3000`.
 
 The UI dependencies are the `ui` optional extra, not a dependency group,
-because the package is published to PyPI as `patch-sim` (built with hatchling).
+because the package is published to PyPI as `patch-clamp-sim` (built with
+hatchling; PyPI rejects `patch-sim` as too similar to the unrelated `patchsim`).
+The import names (`patch_sim`, `patch_sim_ui`) and the `patch-sim` command
+differ from the distribution name; `importlib.metadata` lookups must use
+`patch-clamp-sim`.
 Installed users start the app with `patch-sim ui` (`patch_sim_ui/cli.py`), which
 runs Reflex in a per-user working directory prepared by
 `patch_sim_ui/launcher.py`. The Reflex config lives in
@@ -129,7 +133,7 @@ ty enforces types in `patch_sim/` (core library) and UI code (`patch_sim_ui/`). 
 
 ## Releasing
 
-The package is published to PyPI as `patch-sim` by `.github/workflows/release.yml`,
+The package is published to PyPI as `patch-clamp-sim` by `.github/workflows/release.yml`,
 using Trusted Publishing (no API tokens). The version is static in
 `pyproject.toml`.
 

@@ -102,7 +102,7 @@ jobs:
             echo "patch-sim ui should fail without the ui extra"
             exit 1
           fi
-          grep -q 'pip install "patch-sim\[ui\]"' ui.err
+          grep -q 'pip install "patch-clamp-sim\[ui\]"' ui.err
           if grep -q Traceback ui.err; then cat ui.err; exit 1; fi
 
   smoke-ui:
@@ -175,7 +175,7 @@ jobs:
     runs-on: ubuntu-latest
     environment:
       name: testpypi
-      url: https://test.pypi.org/p/patch-sim
+      url: https://test.pypi.org/p/patch-clamp-sim
     permissions:
       id-token: write
     steps:
@@ -196,7 +196,7 @@ jobs:
     runs-on: ubuntu-latest
     environment:
       name: pypi
-      url: https://pypi.org/p/patch-sim
+      url: https://pypi.org/p/patch-clamp-sim
     permissions:
       id-token: write
     steps:

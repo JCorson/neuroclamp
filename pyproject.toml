@@ -1,5 +1,5 @@
 [project]
-name = "patch-sim"
+name = "patch-clamp-sim"
 version = "0.1.0"
 description = "Patch clamp experiment simulator implementing the Hodgkin-Huxley model for neuronal electrophysiology"
 readme = "README.md"
