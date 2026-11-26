@@ -11,8 +11,14 @@ from typing import Any
 from translate import to_tree_neuron
 
 import patch_sim as ps
+from patch_sim.channels.base import _CA_NERNST_FLOOR
+from patch_sim.clamp_simulations import _V_CLAMP_MAX, _V_CLAMP_MIN
+from patch_sim.electrochemistry import F, R
 from patch_sim.neuron import Neuron
 from patch_sim.utils import SAFE_EXP_CLIP_MAX
+
+#: Spec format version; must match ``SPEC_VERSION`` in the Rust crate.
+SPEC_VERSION = 1
 
 
 def lower(neuron: Neuron) -> dict[str, Any]:
@@ -42,10 +48,11 @@ def lower(neuron: Neuron) -> dict[str, Any]:
                 )
     cd = neuron.calcium_dynamics
     return {
-        "version": 1,
+        "version": SPEC_VERSION,
         "c_m": neuron.C_m,
         "phi": neuron.q10_factor,
         "exp_clip": SAFE_EXP_CLIP_MAX,
+        "v_clamp_mv": [_V_CLAMP_MIN, _V_CLAMP_MAX],
         "gates": [
             {
                 "name": g.name,
@@ -76,7 +83,9 @@ def lower(neuron: Neuron) -> dict[str, Any]:
             "ca_rest": cd.ca_rest,
             "ca_out": neuron.Ca_out,
             "temperature_k": neuron.T,
-            "nernst_floor_mm": 1e-9,
+            "nernst_floor_mm": _CA_NERNST_FLOOR,
+            "gas_constant": R,
+            "faraday": F,
         },
     }
 

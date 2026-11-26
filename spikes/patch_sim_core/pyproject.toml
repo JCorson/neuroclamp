@@ -1,0 +1,14 @@
+# Build configuration for `maturin develop`. This spike is not a dependency of
+# patch_sim; see README.md.
+[build-system]
+requires = ["maturin>=1.9.4,<2"]
+build-backend = "maturin"
+
+[project]
+name = "patch_sim_core"
+version = "0.0.0"
+requires-python = ">=3.13"
+dependencies = ["numpy"]
+
+[tool.maturin]
+features = ["python"]

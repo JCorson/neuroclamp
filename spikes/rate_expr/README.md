@@ -20,6 +20,8 @@ node classes move into `patch_sim/rates.py` and this directory should be deleted
 | `verify_rates.py` | Pointwise comparison of all 106 module-level rates against their trees, including the exp-linear singular points. |
 | `verify_sims.py` | Runs every preset in current and voltage clamp with tree gates and compares against today's rates. |
 | `benchmark.py` | Times today's rates vs. trees vs. codegen, with the `uses_calcium` tabulation fix patched in. |
+| `backend.py` | `simulate_current_clamp(neuron, current, backend="python" \| "rust")`. The Rust path lowers the neuron and runs `spikes/patch_sim_core`, returning the library's structured array. |
+| `verify_rust.py` | Compares every result field from the two backends on all presets, and times them. Needs the extension built (see `spikes/patch_sim_core/README.md`). |
 
 ## Running
 
@@ -30,6 +32,7 @@ PYTHONPATH=. uv run --frozen python spikes/rate_expr/verify_rates.py
 PYTHONPATH=. uv run --frozen python spikes/rate_expr/verify_sims.py
 PYTHONPATH=. uv run --frozen python spikes/rate_expr/lower.py
 PYTHONPATH=. uv run --frozen python spikes/rate_expr/benchmark.py
+PYTHONPATH=. uv run --frozen python spikes/rate_expr/verify_rust.py  # after building the crate
 ```
 
 ## Results (2026-11-26, 4-core container)
