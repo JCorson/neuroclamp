@@ -12,6 +12,8 @@
 //!   step, never at intermediate sub-steps.
 //! - φ (the Q10 factor) multiplies every rate.
 
+use rayon::prelude::*;
+
 use crate::expr::{int_pow, py_max};
 use crate::spec::{ChannelSpec, ModelSpec};
 
@@ -265,6 +267,26 @@ impl Model {
             data,
         })
     }
+
+    /// Run one current-clamp sweep per protocol, in parallel across CPU cores.
+    ///
+    /// Every sweep starts from the same initial state, as each sweep of a
+    /// protocol family does in the app. `par_iter` (from `rayon`) splits the
+    /// sweeps across a thread pool; results come back in protocol order.
+    /// `Model` is read-only during a simulation, so threads share it safely.
+    pub fn simulate_current_clamp_batch(
+        &self,
+        protocols: &[&[f64]],
+        v0: f64,
+        gates0: &[f64],
+        ca0: f64,
+        dt: f64,
+    ) -> Result<Vec<Trace>, String> {
+        protocols
+            .par_iter()
+            .map(|i_ext| self.simulate_current_clamp(i_ext, v0, gates0, ca0, dt))
+            .collect()
+    }
 }
 
 #[cfg(test)]
@@ -325,5 +347,21 @@ mod tests {
         assert_eq!(py_clamp(-200.0, -150.0, 150.0), -150.0);
         // Python's max(0.0, min(1.0, nan)) is 1.0.
         assert_eq!(py_clamp(f64::NAN, 0.0, 1.0), 1.0);
+    }
+
+    #[test]
+    fn batch_matches_sequential_runs() {
+        let model = passive_model(0.3, -65.0, 1.0);
+        let protocols: Vec<Vec<f64>> = (0..6).map(|k| vec![k as f64; 400]).collect();
+        let refs: Vec<&[f64]> = protocols.iter().map(Vec::as_slice).collect();
+        let batch = model
+            .simulate_current_clamp_batch(&refs, -65.0, &[], 0.0, 0.025)
+            .unwrap();
+        for (trace, i_ext) in batch.iter().zip(&protocols) {
+            let single = model
+                .simulate_current_clamp(i_ext, -65.0, &[], 0.0, 0.025)
+                .unwrap();
+            assert_eq!(trace.data, single.data);
+        }
     }
 }

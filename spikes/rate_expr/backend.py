@@ -118,19 +118,86 @@ def simulate_current_clamp(
     current = np.ascontiguousarray(current_external, dtype=np.float64)
     if current.size == 0 or not np.all(np.isfinite(current)):
         raise ValueError("current_external must be non-empty and finite.")
+    model, gates0, ca0 = _prepare(neuron)
+    dt, time = _setup_simulation(current.size, SIM_SAMPLING_FREQ)
+    columns = model.simulate_current_clamp(current, neuron.v_rest, gates0, ca0, dt)
+    return _structured(neuron, time, columns)
 
+
+def simulate_current_clamp_batch(
+    neuron: Neuron,
+    protocols: np.ndarray,
+    *,
+    backend: Backend = "python",
+) -> list[np.ndarray]:
+    """Simulate a family of current-clamp sweeps (one per protocol row).
+
+    ``"python"`` uses :func:`neuroclamp.simulate_batch` (a process pool), as
+    the app does; ``"rust"`` runs every sweep in parallel threads inside the
+    compiled extension.
+
+    Args:
+        neuron: The neuron to simulate.
+        protocols: Array of shape ``(n_sweeps, n_samples)`` in µA/cm².
+        backend: ``"python"`` or ``"rust"``.
+
+    Returns:
+        One structured result per sweep, in protocol order.
+
+    Raises:
+        ValueError: If ``backend`` is unknown or the input is invalid.
+    """
+    if backend == "python":
+        sweeps = [np.asarray(p) for p in protocols]
+        return list(nc.simulate_batch(neuron, sweeps, nc.simulate_current_clamp))
+    if backend != "rust":
+        raise ValueError(f"unknown backend {backend!r}; use 'python' or 'rust'")
+
+    currents = np.ascontiguousarray(protocols, dtype=np.float64)
+    if currents.ndim != 2 or currents.size == 0 or not np.all(np.isfinite(currents)):
+        raise ValueError("protocols must be a non-empty, finite 2-D array.")
+    model, gates0, ca0 = _prepare(neuron)
+    dt, time = _setup_simulation(currents.shape[1], SIM_SAMPLING_FREQ)
+    stacked = model.simulate_current_clamp_batch(
+        currents, neuron.v_rest, gates0, ca0, dt
+    )
+    return [_structured(neuron, time, columns) for columns in stacked]
+
+
+def _prepare(neuron: Neuron) -> tuple[Any, list[float], float]:
+    """Compile a neuron and compute the library's initial state.
+
+    Gates start at steady state at ``v_rest`` and Ca²⁺ at ``ca_init`` or
+    ``ca_rest``, exactly as :func:`neuroclamp.simulate_current_clamp` does.
+
+    Args:
+        neuron: The neuron to simulate.
+
+    Returns:
+        ``(compiled_model, initial_gates, initial_ca)``.
+    """
     cd = neuron.calcium_dynamics
     ca0 = (cd.ca_init if cd.ca_init is not None else cd.ca_rest) if cd else 0.0
     init = _initialize_gating_variables(neuron, neuron.v_rest, ca0)
     gates0 = [init[gv.name] for gv in neuron.all_gating_variables]
-
     tree_neuron = neuron if _has_tree_rates(neuron) else to_tree_neuron(neuron)
-    model = _compiled_model(json.dumps(lower(tree_neuron)))
-    dt, time = _setup_simulation(current.size, SIM_SAMPLING_FREQ)
-    columns = model.simulate_current_clamp(current, neuron.v_rest, gates0, ca0, dt)
+    return _compiled_model(json.dumps(lower(tree_neuron))), gates0, ca0
 
-    result = np.empty(current.size, dtype=_result_dtype(neuron))
+
+def _structured(neuron: Neuron, time: np.ndarray, columns: np.ndarray) -> np.ndarray:
+    """Wrap the extension's 2-D output in the library's structured dtype.
+
+    Args:
+        neuron: The simulated neuron (defines the field layout).
+        time: Time axis in ms.
+        columns: ``(n_steps, n_columns)`` array from the extension.
+
+    Returns:
+        The structured simulation result.
+    """
+    result = np.empty(len(time), dtype=_result_dtype(neuron))
     result["time"] = time
-    for k, name in enumerate(result.dtype.names[1:]):
+    names = result.dtype.names or ()
+    for k, name in enumerate(names[1:]):
         result[name] = columns[:, k]
     return result
