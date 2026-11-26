@@ -1,4 +1,4 @@
-"""Behavior tests for the ``patch-sim ui`` working-directory launcher."""
+"""Behavior tests for the ``neuroclamp ui`` working-directory launcher."""
 
 import http.server
 import os
@@ -9,7 +9,7 @@ from pathlib import Path
 
 import pytest
 
-from patch_sim_ui import launcher
+from neuroclamp_ui import launcher
 
 
 def test_prepare_workdir_writes_the_config_stub(tmp_path: Path) -> None:
@@ -71,7 +71,7 @@ def test_prepare_workdir_refuses_a_directory_it_did_not_create(
     (project / "rxconfig.py").write_text("config = 'mine'\n")
 
     for reset in (False, True):
-        with pytest.raises(launcher.LauncherError, match="not a patch-sim"):
+        with pytest.raises(launcher.LauncherError, match="not a neuroclamp"):
             launcher.prepare_workdir(project, reset=reset)
 
     assert (project / "assets" / "logo.png").is_file()
@@ -95,16 +95,16 @@ def test_prepare_workdir_reports_unwritable_location(tmp_path: Path) -> None:
         launcher.prepare_workdir(blocker / "work")
 
 
-def test_generated_config_loads_the_patch_sim_ui_app(tmp_path: Path) -> None:
-    """Reflex reads the stub as a config for the installed patch_sim_ui app."""
+def test_generated_config_loads_the_neuroclamp_ui_app(tmp_path: Path) -> None:
+    """Reflex reads the stub as a config for the installed neuroclamp_ui app."""
     pytest.importorskip("reflex")
     from reflex_base.config import _get_config
 
     launcher.prepare_workdir(tmp_path)
     config = _get_config(tmp_path)
 
-    assert config.app_name == "patch_sim_ui"
-    assert config.module == "patch_sim_ui.patch_sim_ui"
+    assert config.app_name == "neuroclamp_ui"
+    assert config.module == "neuroclamp_ui.neuroclamp_ui"
 
 
 def test_default_workdir_is_keyed_by_version() -> None:
@@ -116,7 +116,7 @@ def test_default_workdir_is_keyed_by_version() -> None:
 
     assert first.name == "1.2.3"
     assert first.parent == second.parent
-    assert "patch-sim" in first.parts
+    assert "neuroclamp" in first.parts
 
 
 @pytest.mark.parametrize(

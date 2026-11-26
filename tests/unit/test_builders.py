@@ -1,4 +1,4 @@
-"""Tests for patch_sim.protocols.builders.
+"""Tests for neuroclamp.protocols.builders.
 
 These tests call build_current_protocol and build_voltage_protocol directly,
 requiring no Reflex runtime.
@@ -7,8 +7,8 @@ requiring no Reflex runtime.
 import numpy as np
 import pytest
 
-from patch_sim.presets import PROTOCOL_PRESETS
-from patch_sim.protocols.builders import (
+from neuroclamp.presets import PROTOCOL_PRESETS
+from neuroclamp.protocols.builders import (
     build_current_protocol,
     build_voltage_protocol,
 )

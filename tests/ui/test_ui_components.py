@@ -23,14 +23,14 @@ def _label_present(component, label: str) -> bool:
 
 def test_neuron_panel_renders_without_error():
     """Instantiating neuron_panel must not raise a TypeError."""
-    from patch_sim_ui.components.neuron_panel import neuron_panel
+    from neuroclamp_ui.components.neuron_panel import neuron_panel
 
     neuron_panel()  # must not raise TypeError
 
 
 def test_protocol_panel_renders_without_error():
     """Instantiating protocol_panel must not raise a TypeError."""
-    from patch_sim_ui.components.protocol_panel import protocol_panel
+    from neuroclamp_ui.components.protocol_panel import protocol_panel
 
     protocol_panel()
 
@@ -43,13 +43,13 @@ def test_protocol_param_schema_covers_all_protocols():
     protocols that are not advertised in the UI dropdown.  This catches the
     "added a protocol but forgot the schema entry" failure mode.
     """
-    from patch_sim.constants import (
+    from neuroclamp.constants import (
         CURRENT_CLAMP,
         CURRENT_PROTOCOLS,
         VOLTAGE_CLAMP,
         VOLTAGE_PROTOCOLS,
     )
-    from patch_sim_ui.components.protocol_panel import _PROTOCOL_PARAM_SCHEMA
+    from neuroclamp_ui.components.protocol_panel import _PROTOCOL_PARAM_SCHEMA
 
     expected = {(CURRENT_CLAMP, p) for p in CURRENT_PROTOCOLS} | {
         (VOLTAGE_CLAMP, p) for p in VOLTAGE_PROTOCOLS
@@ -65,8 +65,8 @@ def test_protocol_param_schema_attrs_resolve_on_state():
     test catches typos or missing handlers at static-data time rather than at
     render time.
     """
-    from patch_sim_ui.components.protocol_panel import _PROTOCOL_PARAM_SCHEMA
-    from patch_sim_ui.state.protocol import ProtocolState
+    from neuroclamp_ui.components.protocol_panel import _PROTOCOL_PARAM_SCHEMA
+    from neuroclamp_ui.state.protocol import ProtocolState
 
     for (clamp_mode, protocol_type), fields in _PROTOCOL_PARAM_SCHEMA.items():
         for field in fields:
@@ -87,7 +87,7 @@ def _protocol_schema_keys():
     single source of truth — adding a new protocol entry automatically
     extends the test matrix.
     """
-    from patch_sim_ui.components.protocol_panel import _PROTOCOL_PARAM_SCHEMA
+    from neuroclamp_ui.components.protocol_panel import _PROTOCOL_PARAM_SCHEMA
 
     return list(_PROTOCOL_PARAM_SCHEMA.keys())
 
@@ -95,7 +95,7 @@ def _protocol_schema_keys():
 @pytest.mark.parametrize("clamp_mode,protocol_type", _protocol_schema_keys())
 def test_build_param_form_renders_for_each_protocol(clamp_mode, protocol_type):
     """``_build_param_form`` must build without error for every schema entry."""
-    from patch_sim_ui.components.protocol_panel import (
+    from neuroclamp_ui.components.protocol_panel import (
         _PROTOCOL_PARAM_SCHEMA,
         _build_param_form,
     )
@@ -106,14 +106,14 @@ def test_build_param_form_renders_for_each_protocol(clamp_mode, protocol_type):
 
 def test_index_page_renders_without_error():
     """Instantiating the main index page must not raise."""
-    from patch_sim_ui.patch_sim_ui import index
+    from neuroclamp_ui.neuroclamp_ui import index
 
     index()
 
 
 def test_sweep_manager_renders_without_error():
     """Instantiating sweep_manager must not raise a TypeError."""
-    from patch_sim_ui.components.sweep_manager import sweep_manager
+    from neuroclamp_ui.components.sweep_manager import sweep_manager
 
     sweep_manager()
 
@@ -125,15 +125,15 @@ def test_analysis_sidebar_renders_with_burst_data():
     per-burst table into the new Bursts sub-tab; this smoke test ensures
     the surrounding tab structure still builds.
     """
-    from patch_sim_ui.components.metrics import analysis_sidebar
+    from neuroclamp_ui.components.metrics import analysis_sidebar
 
     analysis_sidebar()
 
 
 def _spec_for_id(ui_id: str):
     """Return the ``_PER_CHANNEL_TRACE_SPECS`` entry for ``ui_id``."""
-    from patch_sim_ui.channels import CHANNELS
-    from patch_sim_ui.components.sweep_manager import _PER_CHANNEL_TRACE_SPECS
+    from neuroclamp_ui.channels import CHANNELS
+    from neuroclamp_ui.components.sweep_manager import _PER_CHANNEL_TRACE_SPECS
 
     idx = next(i for i, ch in enumerate(CHANNELS) if ch.id == ui_id)
     return _PER_CHANNEL_TRACE_SPECS[idx]
@@ -145,7 +145,7 @@ def test_channel_trace_group_excludes_current_when_flag_false():
     The current checkbox label (e.g. ``"I_Ih"``) must not appear in the rendered
     component while the gating label must still be present.
     """
-    from patch_sim_ui.components.sweep_manager import _channel_trace_group
+    from neuroclamp_ui.components.sweep_manager import _channel_trace_group
 
     *positional, has_gating = _spec_for_id("ih")
     current_label, gating_label = positional[2], positional[5]
@@ -166,7 +166,7 @@ def test_channel_trace_group_includes_current_by_default():
     Both the current label (e.g. ``"I_Ih"``) and the gating label must appear
     in the rendered component.
     """
-    from patch_sim_ui.components.sweep_manager import _channel_trace_group
+    from neuroclamp_ui.components.sweep_manager import _channel_trace_group
 
     *positional, has_gating = _spec_for_id("ih")
     current_label, gating_label = positional[2], positional[5]
@@ -181,7 +181,7 @@ def test_channel_trace_group_includes_current_by_default():
 
 def test_channel_trace_group_skips_gating_when_no_gates():
     """Leaks (NaL, KL) have no gates — the gating checkbox must not appear."""
-    from patch_sim_ui.components.sweep_manager import _channel_trace_group
+    from neuroclamp_ui.components.sweep_manager import _channel_trace_group
 
     *positional, has_gating = _spec_for_id("nal")
     assert has_gating is False
@@ -201,8 +201,8 @@ def test_cc_per_channel_section_gating_only():
     For every channel the current label must be absent.  Channels with
     gating variables must show their gating label; leak channels must not.
     """
-    from patch_sim_ui.channels import CHANNELS
-    from patch_sim_ui.components.sweep_manager import (
+    from neuroclamp_ui.channels import CHANNELS
+    from neuroclamp_ui.components.sweep_manager import (
         _PER_CHANNEL_TRACE_SPECS,
         _channel_trace_group,
     )
@@ -222,8 +222,8 @@ def test_cc_per_channel_section_gating_only():
 
 def test_vc_per_channel_section_includes_current():
     """In VC mode each channel sub-group shows current; gating only when present."""
-    from patch_sim_ui.channels import CHANNELS
-    from patch_sim_ui.components.sweep_manager import (
+    from neuroclamp_ui.channels import CHANNELS
+    from neuroclamp_ui.components.sweep_manager import (
         _PER_CHANNEL_TRACE_SPECS,
         _channel_trace_group,
     )
@@ -258,8 +258,8 @@ def test_per_channel_trace_specs_gate_on_visible_channel_ids():
     that path is covered by the renderer tests above which iterate
     only registry-derived specs.
     """
-    from patch_sim_ui.channels import CHANNELS
-    from patch_sim_ui.components.sweep_manager import _PER_CHANNEL_TRACE_SPECS
+    from neuroclamp_ui.channels import CHANNELS
+    from neuroclamp_ui.components.sweep_manager import _PER_CHANNEL_TRACE_SPECS
 
     assert len(_PER_CHANNEL_TRACE_SPECS) == len(CHANNELS), (
         "_PER_CHANNEL_TRACE_SPECS must have one entry per registry channel; "
@@ -280,14 +280,14 @@ def test_per_channel_trace_specs_gate_on_visible_channel_ids():
 
 def test_log_panel_renders_without_error():
     """Instantiating log_panel must not raise a TypeError."""
-    from patch_sim_ui.components.log_panel import log_panel
+    from neuroclamp_ui.components.log_panel import log_panel
 
     log_panel()
 
 
 def test_trace_display_renders_without_error():
     """Instantiating trace_display must not raise a TypeError."""
-    from patch_sim_ui.components.trace_display import trace_display
+    from neuroclamp_ui.components.trace_display import trace_display
 
     trace_display()
 
@@ -299,6 +299,6 @@ def test_tau_v_plot_helper_renders_without_error():
     ``AnalysisState.has_tau_v_data`` so that it only appears once a τ-V
     analysis has been computed; this smoke-tests its construction.
     """
-    from patch_sim_ui.components.metrics import _tau_v_plot
+    from neuroclamp_ui.components.metrics import _tau_v_plot
 
     _tau_v_plot()

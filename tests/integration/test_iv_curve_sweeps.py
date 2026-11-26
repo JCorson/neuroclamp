@@ -10,13 +10,13 @@ import dataclasses
 import numpy as np
 import pytest
 
-import patch_sim
-import patch_sim.channels
-from patch_sim.channels import IonChannel
-from patch_sim.clamp_simulations import simulate_current_clamp, simulate_voltage_clamp
-from patch_sim.constants import SIM_SAMPLING_FREQ
-from patch_sim.neuron import Neuron
-from patch_sim.presets import make_squid_giant_axon
+import neuroclamp
+import neuroclamp.channels
+from neuroclamp.channels import IonChannel
+from neuroclamp.clamp_simulations import simulate_current_clamp, simulate_voltage_clamp
+from neuroclamp.constants import SIM_SAMPLING_FREQ
+from neuroclamp.neuron import Neuron
+from neuroclamp.presets import make_squid_giant_axon
 
 
 def _hh_with(*extras: IonChannel, **overrides: object) -> Neuron:
@@ -59,7 +59,7 @@ def _make_iv_protocols(
     n_steps = round((voltage_max - voltage_min) / voltage_step) + 1
     voltages = np.linspace(voltage_min, voltage_max, n_steps)
     protocols = [
-        patch_sim.step_voltage(
+        neuroclamp.step_voltage(
             duration=sweep_duration,
             voltage_amplitude=float(v),
             step_start=pre_pulse_duration,
@@ -101,7 +101,7 @@ def _make_iv_sweeps(
     voltages = np.linspace(voltage_min, voltage_max, n_steps)
     results: list[tuple[np.ndarray, np.ndarray]] = []
     for voltage in voltages:
-        protocol = patch_sim.step_voltage(
+        protocol = neuroclamp.step_voltage(
             duration=sweep_duration,
             voltage_amplitude=float(voltage),
             step_start=pre_pulse_duration,
@@ -109,7 +109,7 @@ def _make_iv_sweeps(
             holding_voltage=holding_voltage,
             sampling_frequency=_FS,
         )
-        df = patch_sim.simulate_voltage_clamp(neuron, protocol)
+        df = neuroclamp.simulate_voltage_clamp(neuron, protocol)
         results.append((protocol, df))
     return results
 
@@ -204,7 +204,7 @@ def test_batch_matches_sequential() -> None:
         voltage_step=20.0,
     )
     sequential = [simulate_voltage_clamp(neuron, p) for p in protocols]
-    batch = list(patch_sim.simulate_batch(neuron, protocols, max_workers=2))
+    batch = list(neuroclamp.simulate_batch(neuron, protocols, max_workers=2))
     assert len(batch) == len(sequential)
     for seq_df, batch_df in zip(sequential, batch):
         assert seq_df.dtype == batch_df.dtype
@@ -221,7 +221,7 @@ def test_batch_single_sweep() -> None:
         voltage_max=0.0,
         voltage_step=10.0,
     )
-    results = list(patch_sim.simulate_batch(neuron, protocols, max_workers=2))
+    results = list(neuroclamp.simulate_batch(neuron, protocols, max_workers=2))
     assert len(results) == 1
     expected = simulate_voltage_clamp(neuron, protocols[0])
     assert results[0].dtype == expected.dtype
@@ -233,7 +233,7 @@ def test_batch_single_sweep() -> None:
 def test_batch_empty_protocols() -> None:
     """An empty protocol list yields no results."""
     neuron = make_squid_giant_axon()
-    results = list(patch_sim.simulate_batch(neuron, [], max_workers=2))
+    results = list(neuroclamp.simulate_batch(neuron, [], max_workers=2))
     assert results == []
 
 
@@ -245,7 +245,7 @@ def test_batch_preserves_order() -> None:
         voltage_max=40.0,
         voltage_step=20.0,
     )
-    results = list(patch_sim.simulate_batch(neuron, protocols, max_workers=2))
+    results = list(neuroclamp.simulate_batch(neuron, protocols, max_workers=2))
     assert len(results) == len(voltages)
     for df, voltage in zip(results, voltages):
         # Each protocol steps to its commanded voltage — check the peak matches.
@@ -265,12 +265,12 @@ def test_batch_with_calcium_channels() -> None:
     ProcessPoolExecutor) to raise AttributeError. This test runs an IV curve
     simulation with ICaL to verify the fix.
     """
-    ical = patch_sim.channels.make_ical_channel()
-    cd = patch_sim.CalciumDynamics()
+    ical = neuroclamp.channels.make_ical_channel()
+    cd = neuroclamp.CalciumDynamics()
     neuron = _hh_with(ical, calcium_dynamics=cd)
     voltages = [-40.0, 0.0, 40.0]
     protocols = [
-        patch_sim.step_voltage(
+        neuroclamp.step_voltage(
             duration=30.0,
             voltage_amplitude=float(v),
             step_start=5.0,
@@ -281,7 +281,7 @@ def test_batch_with_calcium_channels() -> None:
         for v in voltages
     ]
 
-    results = list(patch_sim.simulate_batch(neuron, protocols, max_workers=2))
+    results = list(neuroclamp.simulate_batch(neuron, protocols, max_workers=2))
 
     assert len(results) == len(voltages)
     for df in results:
@@ -304,7 +304,7 @@ def test_batch_with_current_clamp() -> None:
     stimulus[int(_FS * 0.01) : int(_FS * 0.04)] = 10.0
 
     results = list(
-        patch_sim.simulate_batch(
+        neuroclamp.simulate_batch(
             neuron,
             [stimulus],
             simulate_fn=simulate_current_clamp,

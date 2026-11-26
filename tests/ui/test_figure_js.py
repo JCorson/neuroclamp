@@ -4,12 +4,12 @@ import os
 
 import pytest
 
-# Reflex is not strictly imported here, but importing patch_sim_ui state
+# Reflex is not strictly imported here, but importing neuroclamp_ui state
 # transitively pulls Reflex; keep the testing-env guard for safety.
 os.environ.setdefault("PYTEST_CURRENT_TEST", "test_figure_js.py::setup")
 pytest.importorskip("reflex")
 
-from patch_sim_ui.state._figure_js import (  # noqa: E402
+from neuroclamp_ui.state._figure_js import (  # noqa: E402
     _render_fetch_figure_js,
     _render_sweep_highlight_js,
 )

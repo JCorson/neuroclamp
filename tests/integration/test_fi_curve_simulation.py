@@ -1,12 +1,12 @@
-"""Integration tests for patch_sim.analysis.fi_curve against real HH simulations.
+"""Integration tests for neuroclamp.analysis.fi_curve against real HH simulations.
 
 Runs batch current-clamp sweeps through the full simulation pipeline and verifies
 F-I curve and rheobase properties against real HH dynamics.
 Unit tests with synthetic traces live in tests/unit/test_fi_curve.py.
 """
 
-import patch_sim
-from patch_sim.analysis.fi_curve import estimate_rheobase
+import neuroclamp
+from neuroclamp.analysis.fi_curve import estimate_rheobase
 
 _STIM_START = 10.0
 _STIM_DURATION = 50.0
@@ -24,7 +24,7 @@ def _run_fi_sweeps(hh_model):
         Tuple of (FIAnalysisResult, time array).
     """
     protocols = [
-        patch_sim.step_current(
+        neuroclamp.step_current(
             duration=_STIM_START + _STIM_DURATION + 10.0,
             current_amplitude=amp,
             step_start=_STIM_START,
@@ -33,11 +33,13 @@ def _run_fi_sweeps(hh_model):
         for amp in _CURRENT_STEPS
     ]
     results = list(
-        patch_sim.simulate_batch(hh_model, protocols, patch_sim.simulate_current_clamp)
+        neuroclamp.simulate_batch(
+            hh_model, protocols, neuroclamp.simulate_current_clamp
+        )
     )
     voltages = [r["voltage"] for r in results]
     time = results[0]["time"]
-    fi = patch_sim.analyze_fi(time, voltages, _CURRENT_STEPS, _STIM_START, _STIM_END)
+    fi = neuroclamp.analyze_fi(time, voltages, _CURRENT_STEPS, _STIM_START, _STIM_END)
     return fi, time
 
 

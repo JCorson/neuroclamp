@@ -14,12 +14,12 @@ others continue to exercise rheobase, F-I, sag, and so on.
 import numpy as np
 import pytest
 
-from patch_sim.analysis.ap_metrics import analyze_aps_from_result
-from patch_sim.clamp_simulations import simulate_current_clamp
-from patch_sim.constants import SIM_SAMPLING_FREQ
-from patch_sim.neuron import Neuron
-from patch_sim.presets import make_squid_giant_axon
-from patch_sim.protocols import step_current
+from neuroclamp.analysis.ap_metrics import analyze_aps_from_result
+from neuroclamp.clamp_simulations import simulate_current_clamp
+from neuroclamp.constants import SIM_SAMPLING_FREQ
+from neuroclamp.neuron import Neuron
+from neuroclamp.presets import make_squid_giant_axon
+from neuroclamp.protocols import step_current
 from tests.integration._ap_shape import assert_ap_shape
 
 # ---------------------------------------------------------------------------

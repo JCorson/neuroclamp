@@ -3,6 +3,6 @@
 The immutable neuron model: ion channels, membrane properties, ion
 concentrations, temperature, and optional calcium dynamics.
 
-::: patch_sim.Neuron
+::: neuroclamp.Neuron
 
-::: patch_sim.CalciumDynamics
+::: neuroclamp.CalciumDynamics

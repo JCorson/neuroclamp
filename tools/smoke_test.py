@@ -6,15 +6,15 @@ renders (which exercises the figure-fetch API), and Export CSV returns a CSV
 (which exercises the export API). Both APIs are reached through the app's
 configured backend URL, so a wrong ``REFLEX_API_URL`` fails here.
 
-CI runs this against the Docker image and against ``patch-sim ui`` started
+CI runs this against the Docker image and against ``neuroclamp ui`` started
 from the built wheel; it works against any running app.
 
 Usage:
-    1. Start the app, e.g. ``docker run --rm -p 3000:3000 patch-sim``.
+    1. Start the app, e.g. ``docker run --rm -p 3000:3000 neuroclamp``.
     2. ``uv run --frozen --group browser python tools/smoke_test.py``
 
 The target URL defaults to ``http://localhost:3000`` and can be overridden with
-the ``PATCH_SIM_URL`` environment variable. Exits non-zero on the first failed
+the ``NEUROCLAMP_URL`` environment variable. Exits non-zero on the first failed
 check.
 """
 
@@ -24,7 +24,7 @@ import sys
 from playwright.sync_api import Page, sync_playwright
 from playwright.sync_api import TimeoutError as PlaywrightTimeout
 
-BASE_URL = os.environ.get("PATCH_SIM_URL", "http://localhost:3000")
+BASE_URL = os.environ.get("NEUROCLAMP_URL", "http://localhost:3000")
 
 #: JS expression for the rendered Plotly graph div, or null before the first
 #: render. Plotly.react() adds ``js-plotly-plot`` to ``#ps-trace-plot`` itself.

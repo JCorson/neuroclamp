@@ -1,6 +1,6 @@
-"""Behavior tests for the ``patch-sim`` command line.
+"""Behavior tests for the ``neuroclamp`` command line.
 
-``patch-sim ui`` runs as a real process, the way a user starts it. The only
+``neuroclamp ui`` runs as a real process, the way a user starts it. The only
 stand-in is the server it launches: a small fake ``reflex`` package placed
 first on ``PYTHONPATH``, so ``python -m reflex`` in the child process runs the
 fake instead of building and serving the app. The fake records where it ran,
@@ -17,11 +17,12 @@ import socket
 import subprocess
 import sys
 import time
+import tomllib
 from pathlib import Path
 
 import pytest
 
-from patch_sim_ui import cli
+from neuroclamp_ui import cli
 
 #: The fake ``python -m reflex``. ``FAKE_REFLEX_RECORD`` names a JSON file
 #: that receives the working directory and arguments once the fake is ready.
@@ -54,19 +55,19 @@ if os.environ.get("FAKE_REFLEX_SERVE"):
 raise SystemExit(int(os.environ.get("FAKE_REFLEX_EXIT", "0")))
 """
 
-#: The ``patch-sim`` console script installed alongside this interpreter.
-_PATCH_SIM = shutil.which("patch-sim", path=str(Path(sys.executable).parent))
+#: The ``neuroclamp`` console script installed alongside this interpreter.
+_NEUROCLAMP = shutil.which("neuroclamp", path=str(Path(sys.executable).parent))
 
 
 @pytest.fixture
 def fake_env(tmp_path: Path) -> dict[str, str]:
-    """Build an environment in which ``patch-sim ui`` launches the fake server.
+    """Build an environment in which ``neuroclamp ui`` launches the fake server.
 
     Args:
         tmp_path: Pytest temporary directory.
 
     Returns:
-        Environment variables for a ``patch-sim`` process. ``FAKE_REFLEX_RECORD``
+        Environment variables for a ``neuroclamp`` process. ``FAKE_REFLEX_RECORD``
         points at the file the fake server writes when it starts.
     """
     package = tmp_path / "fake-site" / "reflex"
@@ -95,7 +96,7 @@ def _free_port() -> int:
 
 
 def _ui_command(workdir: Path | None, *extra: str) -> list[str]:
-    """Return a ``patch-sim ui --no-browser`` command line on a free port.
+    """Return a ``neuroclamp ui --no-browser`` command line on a free port.
 
     Args:
         workdir: Value for ``--workdir``, or ``None`` to leave it out.
@@ -104,8 +105,8 @@ def _ui_command(workdir: Path | None, *extra: str) -> list[str]:
     Returns:
         The argument list.
     """
-    assert _PATCH_SIM is not None, "the patch-sim console script is not installed"
-    command = [_PATCH_SIM, "ui", "--no-browser", "--port", str(_free_port())]
+    assert _NEUROCLAMP is not None, "the neuroclamp console script is not installed"
+    command = [_NEUROCLAMP, "ui", "--no-browser", "--port", str(_free_port())]
     if workdir is not None:
         command += ["--workdir", str(workdir)]
     return [*command, *extra]
@@ -114,7 +115,7 @@ def _ui_command(workdir: Path | None, *extra: str) -> list[str]:
 def _run_ui(
     env: dict[str, str], workdir: Path | None, *extra: str
 ) -> subprocess.CompletedProcess[str]:
-    """Run ``patch-sim ui`` to completion against the fake server.
+    """Run ``neuroclamp ui`` to completion against the fake server.
 
     Args:
         env: Environment from the ``fake_env`` fixture.
@@ -149,7 +150,7 @@ def _server_record(env: dict[str, str]) -> dict[str, object] | None:
 
 
 def _start_serving(env: dict[str, str], workdir: Path) -> subprocess.Popen[str]:
-    """Start ``patch-sim ui`` with a fake server that runs until signaled.
+    """Start ``neuroclamp ui`` with a fake server that runs until signaled.
 
     The launcher gets its own process group, like a job started from a
     terminal, so a test can deliver Ctrl+C to the launcher and server
@@ -183,19 +184,19 @@ def _start_serving(env: dict[str, str], workdir: Path) -> subprocess.Popen[str]:
 def test_no_command_prints_usage_and_fails(
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    """Running ``patch-sim`` with no subcommand shows usage and exits with 2.
+    """Running ``neuroclamp`` with no subcommand shows usage and exits with 2.
 
     Args:
         capsys: Pytest output-capture fixture.
     """
     assert cli.main([]) == 2
-    assert "usage: patch-sim" in capsys.readouterr().err
+    assert "usage: neuroclamp" in capsys.readouterr().err
 
 
 def test_version_flag_prints_the_package_version(
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    """``patch-sim --version`` prints the version and exits successfully.
+    """``neuroclamp --version`` prints the version and exits successfully.
 
     Args:
         capsys: Pytest output-capture fixture.
@@ -203,8 +204,10 @@ def test_version_flag_prints_the_package_version(
     with pytest.raises(SystemExit) as excinfo:
         cli.main(["--version"])
 
+    pyproject = Path(__file__).parents[2] / "pyproject.toml"
+    expected = tomllib.loads(pyproject.read_text())["project"]["version"]
     assert excinfo.value.code == 0
-    assert capsys.readouterr().out.startswith("patch-sim ")
+    assert capsys.readouterr().out == f"neuroclamp {expected}\n"
 
 
 @pytest.mark.parametrize("value", ["0", "70000", "abc"])
@@ -241,13 +244,13 @@ def test_ui_serves_from_the_workdir_and_returns_the_server_exit_code(
     record = _server_record(fake_env)
     assert record is not None
     assert Path(str(record["cwd"])) == workdir
-    assert "Starting patch-sim at http://localhost:" in result.stderr
+    assert "Starting neuroclamp at http://localhost:" in result.stderr
 
 
 def test_ui_reads_workdir_from_environment(
     fake_env: dict[str, str], tmp_path: Path
 ) -> None:
-    """``PATCH_SIM_WORKDIR`` selects the working directory when no flag is given.
+    """``NEUROCLAMP_WORKDIR`` selects the working directory when no flag is given.
 
     Args:
         fake_env: Environment that launches the fake server.
@@ -355,7 +358,7 @@ def test_ui_refuses_to_reset_a_directory_it_did_not_create(
 
     assert result.returncode == 1
     assert keep.read_text() == "important"
-    assert "not a patch-sim working directory" in result.stderr
+    assert "not a neuroclamp working directory" in result.stderr
     assert _server_record(fake_env) is None
 
 
@@ -401,13 +404,13 @@ def test_ui_sigterm_stops_the_server_and_returns_143(
 
 
 def test_python_dash_m_runs_the_same_command() -> None:
-    """``python -m patch_sim_ui --help`` prints the patch-sim usage."""
+    """``python -m neuroclamp_ui --help`` prints the neuroclamp usage."""
     result = subprocess.run(
-        [sys.executable, "-m", "patch_sim_ui", "--help"],
+        [sys.executable, "-m", "neuroclamp_ui", "--help"],
         capture_output=True,
         text=True,
         check=False,
     )
 
     assert result.returncode == 0
-    assert "usage: patch-sim" in result.stdout
+    assert "usage: neuroclamp" in result.stdout

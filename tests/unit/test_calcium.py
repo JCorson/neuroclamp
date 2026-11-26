@@ -1,4 +1,4 @@
-"""Unit tests for patch_sim.calcium and IonChannel.carries_calcium.
+"""Unit tests for neuroclamp.calcium and IonChannel.carries_calcium.
 
 Covers CalciumDynamics ODE correctness, validation, the carries_calcium flag
 on IonChannel, and public API export. Simulation integration tests live in
@@ -7,15 +7,15 @@ tests/integration/test_calcium_simulation.py.
 
 import pytest
 
-import patch_sim
-from patch_sim.calcium import CalciumDynamics
-from patch_sim.channels import (
+import neuroclamp
+from neuroclamp.calcium import CalciumDynamics
+from neuroclamp.channels import (
     GatingVariable,
     IonChannel,
     IonSpecies,
     NernstSpec,
 )
-from patch_sim.rates import VoltageOnlyFn
+from neuroclamp.rates import VoltageOnlyFn
 
 # ---------------------------------------------------------------------------
 # Minimal calcium channel for use in tests.
@@ -147,8 +147,8 @@ def test_mock_calcium_channel_carries_calcium() -> None:
 # ---------------------------------------------------------------------------
 
 
-def test_calcium_dynamics_exported_from_patch_sim() -> None:
-    """CalciumDynamics is accessible from the top-level patch_sim package."""
-    assert hasattr(patch_sim, "CalciumDynamics")
-    cd = patch_sim.CalciumDynamics()
+def test_calcium_dynamics_exported_from_neuroclamp() -> None:
+    """CalciumDynamics is accessible from the top-level neuroclamp package."""
+    assert hasattr(neuroclamp, "CalciumDynamics")
+    cd = neuroclamp.CalciumDynamics()
     assert isinstance(cd, CalciumDynamics)

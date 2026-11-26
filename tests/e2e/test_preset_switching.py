@@ -4,7 +4,7 @@ Exercises the wiring that must clear stale results when the user switches
 neuron or protocol presets and runs again.
 """
 
-from patch_sim.constants import (
+from neuroclamp.constants import (
     ACTION_POTENTIAL,
     CORTICAL_PYRAMIDAL,
     IV_CURVE,

@@ -1,6 +1,6 @@
-## patch-sim: Patch Clamp Simulator
+## neuroclamp: Patch Clamp Simulator
 
-`patch_sim` is a Python library for simulating neuronal electrophysiology using the
+`neuroclamp` is a Python library for simulating neuronal electrophysiology using the
 [Hodgkin-Huxley model](https://en.wikipedia.org/wiki/Hodgkin%E2%80%93Huxley_model).
 It models how action potentials arise at a neuron's membrane by simulating the dynamics
 of voltage-gated ion channels over time. The core model includes the classic sodium,
@@ -25,7 +25,7 @@ Key features:
 
 ## Web UI
 
-`patch_sim` includes an interactive web interface inspired by pClamp electrophysiology software.
+`neuroclamp` includes an interactive web interface inspired by pClamp electrophysiology software.
 
 - Configure neuron parameters and enable/disable additional ion channels with conductance sliders
 - Run current clamp and voltage clamp protocols
@@ -36,14 +36,14 @@ Key features:
 ### Installing from PyPI
 
 ```
-pip install patch-sim           # core library only
-pip install "patch-sim[ui]"     # library plus the web UI
+pip install neuroclamp           # core library only
+pip install "neuroclamp[ui]"     # library plus the web UI
 ```
 
 Start the web UI from any directory:
 
 ```
-patch-sim ui
+neuroclamp ui
 ```
 
 The app opens in your browser at `http://localhost:3000` once it is ready.
@@ -56,8 +56,8 @@ Options:
   `REFLEX_API_URL=http://myhost:3000`.
 - `--no-browser`: do not open a browser.
 - `--workdir PATH`: where the generated config and frontend build are kept
-  (default: `$PATCH_SIM_WORKDIR`, else a per-user cache directory such as
-  `~/.cache/patch-sim/<version>/` on Linux).
+  (default: `$NEUROCLAMP_WORKDIR`, else a per-user cache directory such as
+  `~/.cache/neuroclamp/<version>/` on Linux).
 - `--reset`: delete the working directory first and rebuild the frontend.
   The launcher only writes to, or deletes, a directory it created (or an empty
   one), so `--workdir` cannot overwrite an existing folder.
@@ -84,8 +84,8 @@ You can run the web UI without installing uv, Python, or Node; only
 repository root:
 
 ```
-docker build -t patch-sim .
-docker run --rm -p 3000:3000 patch-sim
+docker build -t neuroclamp .
+docker run --rm -p 3000:3000 neuroclamp
 ```
 
 or, with Docker Compose:
@@ -102,7 +102,7 @@ If the browser reaches the app at any URL other than `http://localhost:3000`,
 pass that URL as `REFLEX_API_URL`:
 
 ```
-docker run --rm -p 8080:3000 -e REFLEX_API_URL=http://localhost:8080 patch-sim
+docker run --rm -p 8080:3000 -e REFLEX_API_URL=http://localhost:8080 neuroclamp
 ```
 
 - **Different host port** (e.g. `-p 8080:3000`): without `REFLEX_API_URL` the
@@ -160,13 +160,13 @@ uv run --frozen -m pytest --verbose
 To see a line-by-line coverage report for the core library:
 
 ```
-uv run --frozen -m pytest --cov=patch_sim --cov-report=term-missing
+uv run --frozen -m pytest --cov=neuroclamp --cov-report=term-missing
 ```
 
 To generate an HTML report (written to `htmlcov/`):
 
 ```
-uv run --frozen -m pytest --cov=patch_sim --cov-report=html
+uv run --frozen -m pytest --cov=neuroclamp --cov-report=html
 ```
 
 #### Linting and code style
@@ -198,4 +198,4 @@ uvx ty check
 
 ## License
 
-This project is licensed under the [GNU General Public License v3.0 or later](https://github.com/JCorson/patch-sim/blob/main/LICENSE).
+This project is licensed under the [GNU General Public License v3.0 or later](https://github.com/JCorson/neuroclamp/blob/main/LICENSE).

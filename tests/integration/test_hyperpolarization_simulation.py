@@ -21,12 +21,12 @@ tests/unit/test_hyperpolarization_analysis.py.
 import numpy as np
 import pytest
 
-import patch_sim
-from patch_sim.analysis.hyperpolarization import (
+import neuroclamp
+from neuroclamp.analysis.hyperpolarization import (
     HyperpolarizationAnalysisResult,
     analyze_hyperpolarization,
 )
-from patch_sim.constants import (
+from neuroclamp.constants import (
     CA1_PYRAMIDAL,
     CORTICAL_PYRAMIDAL,
     DOPAMINERGIC,
@@ -36,7 +36,7 @@ from patch_sim.constants import (
     STN,
     THALAMIC_RELAY,
 )
-from patch_sim.presets import (
+from neuroclamp.presets import (
     NEURON_PRESET_NAMES,
     NEURON_PRESETS,
     NEURON_PROTOCOL_ADJUSTMENTS,
@@ -77,7 +77,7 @@ def _run_hyperpolarization_sweeps(
     current_steps = list(np.linspace(min_i, max_i, n_steps))
 
     protocols = [
-        patch_sim.step_current(
+        neuroclamp.step_current(
             duration=total,
             current_amplitude=float(amp),
             step_start=pre,
@@ -87,7 +87,7 @@ def _run_hyperpolarization_sweeps(
         for amp in current_steps
     ]
     results = list(
-        patch_sim.simulate_batch(neuron, protocols, patch_sim.simulate_current_clamp)
+        neuroclamp.simulate_batch(neuron, protocols, neuroclamp.simulate_current_clamp)
     )
     voltages = [r["voltage"] for r in results]
     time = results[0]["time"]

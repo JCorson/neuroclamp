@@ -1,4 +1,4 @@
-"""Tests for the side-channel figure store (patch_sim_ui/api/traces.py)."""
+"""Tests for the side-channel figure store (neuroclamp_ui/api/traces.py)."""
 
 import json
 
@@ -11,8 +11,8 @@ pytest.importorskip("starlette")
 import plotly.graph_objects as go  # noqa: E402
 from starlette.testclient import TestClient  # noqa: E402
 
-from patch_sim_ui.api import traces  # noqa: E402
-from patch_sim_ui.api.traces import get_bytes, put, starlette_app  # noqa: E402
+from neuroclamp_ui.api import traces  # noqa: E402
+from neuroclamp_ui.api.traces import get_bytes, put, starlette_app  # noqa: E402
 
 
 def _make_fig(n_traces: int = 2, n_pts: int = 10) -> go.Figure:

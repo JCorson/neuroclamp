@@ -1,20 +1,22 @@
-"""Tests for CSV export of simulation results (patch_sim_ui/export.py)."""
+"""Tests for CSV export of simulation results (neuroclamp_ui/export.py)."""
 
 import io
+import tomllib
 from datetime import datetime
+from pathlib import Path
 
 import numpy as np
 import pytest
 
-import patch_sim
-from patch_sim.constants import CURRENT_CLAMP, VOLTAGE_CLAMP
-from patch_sim_ui.export import (
+import neuroclamp
+from neuroclamp.constants import CURRENT_CLAMP, VOLTAGE_CLAMP
+from neuroclamp_ui.export import (
     _slugify,
     build_export_metadata,
     export_filename,
     sweeps_to_csv,
 )
-from patch_sim_ui.sweep import Sweep
+from neuroclamp_ui.sweep import Sweep
 
 
 def _sweep(
@@ -161,7 +163,7 @@ def test_metadata_block_is_ascii_and_precedes_header() -> None:
     csv = sweeps_to_csv([_sweep()], meta)
     csv.encode("ascii")
     lines = csv.splitlines()
-    assert lines[0] == "# patch_sim export"
+    assert lines[0] == "# neuroclamp export"
     assert "# sweep s01: +10.0 uA/cm2" in lines
     assert "# tau: tau 5 MOhm" in lines
     assert not lines[3].startswith("#")
@@ -175,7 +177,7 @@ def test_metadata_value_cannot_span_lines() -> None:
 
 def test_build_export_metadata_contents() -> None:
     """Metadata records provenance, scalars, per-channel g_max and sweep labels."""
-    neuron = patch_sim.Neuron()
+    neuron = neuroclamp.Neuron()
     meta = dict(
         build_export_metadata(
             neuron,
@@ -202,6 +204,24 @@ def test_build_export_metadata_contents() -> None:
     assert "C_m" in meta
 
 
+def test_build_export_metadata_records_the_installed_version() -> None:
+    """The recorded neuroclamp_version is the project version, not a fallback."""
+    pyproject = Path(__file__).parents[2] / "pyproject.toml"
+    expected = tomllib.loads(pyproject.read_text())["project"]["version"]
+    meta = dict(
+        build_export_metadata(
+            neuroclamp.Neuron(),
+            neuron_preset="Squid",
+            protocol_preset="",
+            clamp_mode=CURRENT_CLAMP,
+            protocol_type="Step",
+            protocol_params={},
+            sweep_labels=["sweep"],
+        )
+    )
+    assert meta["neuroclamp_version"] == expected
+
+
 def test_nan_in_data_is_written_as_empty_cell() -> None:
     """A NaN produced by the simulation becomes an empty cell, not 'nan'."""
     sweep = _sweep()
@@ -222,7 +242,7 @@ def test_export_filename_format() -> None:
         datetime(2026, 1, 2, 3, 4, 5),
     )
     assert name == (
-        "patch-sim_squid-giant-axon-classic-hh_action-potential_20260102-030405.csv"
+        "neuroclamp_squid-giant-axon-classic-hh_action-potential_20260102-030405.csv"
     )
 
 

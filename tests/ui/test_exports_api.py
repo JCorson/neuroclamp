@@ -1,4 +1,4 @@
-"""Tests for the export store (patch_sim_ui/api/exports.py)."""
+"""Tests for the export store (neuroclamp_ui/api/exports.py)."""
 
 import pytest
 
@@ -6,8 +6,8 @@ pytest.importorskip("starlette")
 
 from starlette.testclient import TestClient  # noqa: E402
 
-from patch_sim_ui.api import exports  # noqa: E402
-from patch_sim_ui.api.exports import download_js, put, starlette_app  # noqa: E402
+from neuroclamp_ui.api import exports  # noqa: E402
+from neuroclamp_ui.api.exports import download_js, put, starlette_app  # noqa: E402
 
 
 @pytest.fixture(autouse=True)
@@ -18,13 +18,13 @@ def _clear_store():
 
 def test_route_serves_csv_attachment() -> None:
     """GET returns 200 with the payload, CSV media type and attachment header."""
-    put("tok", "patch-sim_x.csv", b"a,b\n1,2\n")
+    put("tok", "neuroclamp_x.csv", b"a,b\n1,2\n")
     resp = TestClient(starlette_app).get("/api/export/tok")
     assert resp.status_code == 200
     assert resp.content == b"a,b\n1,2\n"
     assert resp.headers["content-type"] == "text/csv; charset=utf-8"
     assert (
-        resp.headers["content-disposition"] == 'attachment; filename="patch-sim_x.csv"'
+        resp.headers["content-disposition"] == 'attachment; filename="neuroclamp_x.csv"'
     )
 
 

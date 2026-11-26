@@ -7,7 +7,7 @@ all handlers are called directly on bare state instances.
 
 import pytest
 
-from patch_sim.constants import (
+from neuroclamp.constants import (
     ACTION_POTENTIAL,
     CORTICAL_PYRAMIDAL,
     DOPAMINERGIC,

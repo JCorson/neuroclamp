@@ -15,8 +15,8 @@ from typing import Any
 import numpy as np
 import pytest
 
-from patch_sim.calcium import CalciumDynamics
-from patch_sim.channels import (
+from neuroclamp.calcium import CalciumDynamics
+from neuroclamp.channels import (
     DOPAMINERGIC_VT,
     MAINEN_SEJNOWSKI_KV_PRESCALE,
     MAINEN_SEJNOWSKI_KV_VHALF,
@@ -89,7 +89,7 @@ from patch_sim.channels import (
     trn_alpha_m,
     trn_beta_h,
 )
-from patch_sim.channels.auxiliary import (
+from neuroclamp.channels.auxiliary import (
     _alpha_a,
     _alpha_b,
     _alpha_d,
@@ -125,20 +125,20 @@ from patch_sim.channels.auxiliary import (
     _beta_sNaP,
     _beta_w,
 )
-from patch_sim.channels.pospischil import (
+from neuroclamp.channels.pospischil import (
     _nav11_alpha_sNa,
     _nav11_beta_sNa,
     _nav12_alpha_sNa,
     _nav12_beta_sNa,
 )
-from patch_sim.channels.purkinje import _purkinje_alpha_sNa, _purkinje_beta_sNa
-from patch_sim.channels.snc import (
+from neuroclamp.channels.purkinje import _purkinje_alpha_sNa, _purkinje_beta_sNa
+from neuroclamp.channels.snc import (
     _alpha_sNaP_snc,
     _beta_sNaP_snc,
     _dopaminergic_alpha_sNa,
     _dopaminergic_beta_sNa,
 )
-from patch_sim.channels.stn import (
+from neuroclamp.channels.stn import (
     _stn_alpha_h,
     _stn_alpha_m,
     _stn_alpha_sNa,
@@ -146,12 +146,12 @@ from patch_sim.channels.stn import (
     _stn_beta_m,
     _stn_beta_sNa,
 )
-from patch_sim.clamp_simulations import simulate_current_clamp, simulate_voltage_clamp
-from patch_sim.electrochemistry import nernst_potential
-from patch_sim.neuron import Neuron
-from patch_sim.presets import make_squid_giant_axon
-from patch_sim.protocols import step_current, step_voltage
-from patch_sim.rates import CalciumDependentFn, Rate, VoltageOnlyFn
+from neuroclamp.clamp_simulations import simulate_current_clamp, simulate_voltage_clamp
+from neuroclamp.electrochemistry import nernst_potential
+from neuroclamp.neuron import Neuron
+from neuroclamp.presets import make_squid_giant_axon
+from neuroclamp.protocols import step_current, step_voltage
+from neuroclamp.rates import CalciumDependentFn, Rate, VoltageOnlyFn
 
 
 def _hh_with(*extras: IonChannel, **overrides: Any) -> Neuron:
@@ -252,7 +252,7 @@ def test_base_ion_channel_power_two():
 
 def test_base_ion_channel_reversal_potential_uses_nernst():
     """reversal_potential() computes K⁺ Nernst potential from neuron concentrations."""
-    from patch_sim.electrochemistry import nernst_potential
+    from neuroclamp.electrochemistry import nernst_potential
 
     neuron = Neuron()
     ch = _make_simple_channel()
@@ -475,7 +475,7 @@ def test_hh_duplicate_with_existing_na_raises():
 
 def test_make_ih_channel_defaults():
     """make_ih_channel() produces a channel with the expected defaults."""
-    from patch_sim.constants import DEFAULT_G_IH, DEFAULT_IH_P_NA
+    from neuroclamp.constants import DEFAULT_G_IH, DEFAULT_IH_P_NA
 
     ch = make_ih_channel()
     assert ch.name == "h"
@@ -716,7 +716,7 @@ def test_ika_kinetics_inactivation_decreases_with_depolarization():
 
 def test_make_ika_channel_defaults():
     """make_ika_channel() produces a channel with the expected defaults."""
-    from patch_sim.constants import DEFAULT_G_IKA
+    from neuroclamp.constants import DEFAULT_G_IKA
 
     ch = make_ika_channel()
     assert ch.name == "Ka"
@@ -821,7 +821,7 @@ def test_ika_and_ih_coexist():
 
 def test_ikv31_gating_steady_state_in_bounds():
     """IKv31 gating variable nk_inf is in [0, 1] for physiological voltages."""
-    from patch_sim.channels.auxiliary import _ikv31_alpha_nk, _ikv31_beta_nk
+    from neuroclamp.channels.auxiliary import _ikv31_alpha_nk, _ikv31_beta_nk
 
     for V in range(-100, 61):
         alpha = _ikv31_alpha_nk(float(V), 0.0)
@@ -836,7 +836,7 @@ def test_ikv31_near_zero_activation_at_rest():
     The high activation threshold of Kv3.1 means virtually no outward current
     at rest — this is the key property that fixes issue #155.
     """
-    from patch_sim.channels.auxiliary import _ikv31_alpha_nk, _ikv31_beta_nk
+    from neuroclamp.channels.auxiliary import _ikv31_alpha_nk, _ikv31_beta_nk
 
     alpha = _ikv31_alpha_nk(-65.0, 0.0)
     beta = _ikv31_beta_nk(-65.0, 0.0)
@@ -846,7 +846,7 @@ def test_ikv31_near_zero_activation_at_rest():
 
 def test_ikv31_strong_activation_depolarized():
     """IKv31 nk_inf is well above 0.5 at 0 mV (depolarized)."""
-    from patch_sim.channels.auxiliary import _ikv31_alpha_nk, _ikv31_beta_nk
+    from neuroclamp.channels.auxiliary import _ikv31_alpha_nk, _ikv31_beta_nk
 
     alpha = _ikv31_alpha_nk(0.0, 0.0)
     beta = _ikv31_beta_nk(0.0, 0.0)
@@ -856,8 +856,8 @@ def test_ikv31_strong_activation_depolarized():
 
 def test_make_ikv31_channel_defaults():
     """make_ikv31_channel() produces a channel with the expected defaults."""
-    from patch_sim.channels import make_ikv31_channel
-    from patch_sim.constants import DEFAULT_G_IKV31
+    from neuroclamp.channels import make_ikv31_channel
+    from neuroclamp.constants import DEFAULT_G_IKV31
 
     ch = make_ikv31_channel()
     assert ch.name == "Kv31"
@@ -869,7 +869,7 @@ def test_make_ikv31_channel_defaults():
 
 def test_current_clamp_with_ikv31():
     """Current clamp with IKv31 channel adds Kv31 and nk columns."""
-    from patch_sim.channels import make_ikv31_channel
+    from neuroclamp.channels import make_ikv31_channel
 
     neuron = _hh_with(make_ikv31_channel())
     stimulus = np.zeros(int(40_000 * 0.05))
@@ -981,7 +981,7 @@ def test_inap_slow_inactivation_tau_is_slow():
 
 def test_make_inap_channel_defaults():
     """make_inap_channel() returns the (p, sNaP) two-gate INaP topology."""
-    from patch_sim.constants import DEFAULT_G_NAP
+    from neuroclamp.constants import DEFAULT_G_NAP
 
     ch = make_inap_channel()
     assert ch.name == "NaP"
@@ -1077,7 +1077,7 @@ def test_snc_inap_slow_inactivation_tau_is_slow():
 
 def test_make_snc_inap_channel_defaults():
     """make_snc_inap_channel() exposes pSNc and sNaP_snc gates by default."""
-    from patch_sim.constants import DEFAULT_G_NAP_SNC
+    from neuroclamp.constants import DEFAULT_G_NAP_SNC
 
     ch = make_snc_inap_channel()
     assert ch.name == "NaP_SNc"
@@ -1233,7 +1233,7 @@ def test_inar_rates_non_negative():
 
 def test_make_inar_channel_defaults():
     """make_inar_channel() produces a channel with the expected defaults."""
-    from patch_sim.constants import DEFAULT_G_NAR
+    from neuroclamp.constants import DEFAULT_G_NAR
 
     ch = make_inar_channel()
     assert ch.name == "NaR"
@@ -1356,7 +1356,7 @@ def test_inap_slow_inactivation_and_inar_no_gate_collision():
 
 def test_all_additional_channels_coexist():
     """All seven additional channels (Ih, IKa, INaP, INaR, IM, IKir, IKCa) coexist."""
-    from patch_sim.calcium import CalciumDynamics
+    from neuroclamp.calcium import CalciumDynamics
 
     neuron = _hh_with(
         make_ih_channel(),
@@ -1431,7 +1431,7 @@ def test_im_slow_kinetics():
 
 def test_make_im_channel_defaults():
     """make_im_channel() produces a channel with the expected defaults."""
-    from patch_sim.constants import DEFAULT_G_IM
+    from neuroclamp.constants import DEFAULT_G_IM
 
     ch = make_im_channel()
     assert ch.name == "M"
@@ -1566,7 +1566,7 @@ def test_katp_tau_is_slow():
 
 def test_make_katp_channel_defaults():
     """make_katp_channel() produces a channel with the expected defaults."""
-    from patch_sim.constants import DEFAULT_G_KATP
+    from neuroclamp.constants import DEFAULT_G_KATP
 
     ch = make_katp_channel()
     assert ch.name == "KATP"
@@ -1627,7 +1627,7 @@ def test_ikir_fast_kinetics():
 
 def test_make_ikir_channel_defaults():
     """make_ikir_channel() produces a channel with the expected defaults."""
-    from patch_sim.constants import DEFAULT_G_IKIR
+    from neuroclamp.constants import DEFAULT_G_IKIR
 
     ch = make_ikir_channel()
     assert ch.name == "Kir"
@@ -1719,7 +1719,7 @@ def test_calcium_gating_variable_in_integrator():
         gating_variables=(cg,),
         reversal_spec=NernstSpec(IonSpecies.POTASSIUM),
     )
-    from patch_sim.calcium import CalciumDynamics
+    from neuroclamp.calcium import CalciumDynamics
 
     neuron = _hh_with(
         ch,
@@ -1793,7 +1793,7 @@ def test_ikca_gating_steady_state_in_bounds():
 
 def test_ikca_activation_increases_with_calcium():
     """IKCa q_inf is higher at higher [Ca²⁺]ᵢ at a fixed voltage."""
-    from patch_sim.channels.auxiliary import _ikca_q_inf
+    from neuroclamp.channels.auxiliary import _ikca_q_inf
 
     V = -20.0
     assert _ikca_q_inf(V, 1e-2) > _ikca_q_inf(V, 1e-3) > _ikca_q_inf(V, 1e-4)
@@ -1801,7 +1801,7 @@ def test_ikca_activation_increases_with_calcium():
 
 def test_ikca_activation_increases_with_depolarization():
     """IKCa q_inf is higher at depolarized voltages at fixed [Ca²⁺]ᵢ."""
-    from patch_sim.channels.auxiliary import _ikca_q_inf
+    from neuroclamp.channels.auxiliary import _ikca_q_inf
 
     ca = 1e-3
     assert _ikca_q_inf(20.0, ca) > _ikca_q_inf(-20.0, ca) > _ikca_q_inf(-80.0, ca)
@@ -1809,7 +1809,7 @@ def test_ikca_activation_increases_with_depolarization():
 
 def test_ikca_zero_calcium_gives_zero_activation():
     """IKCa q_inf is zero when [Ca²⁺]ᵢ is zero, regardless of voltage."""
-    from patch_sim.channels.auxiliary import _ikca_q_inf
+    from neuroclamp.channels.auxiliary import _ikca_q_inf
 
     for V in np.linspace(-120.0, 60.0, 10):
         assert _ikca_q_inf(V, 0.0) == 0.0, f"q_inf non-zero at V={V} with ca=0"
@@ -1830,7 +1830,7 @@ def test_ikca_rates_non_negative():
 
 def test_make_ikca_channel_defaults():
     """make_ikca_channel() produces a channel with the expected defaults."""
-    from patch_sim.constants import DEFAULT_G_IKCA
+    from neuroclamp.constants import DEFAULT_G_IKCA
 
     ch = make_ikca_channel()
     assert ch.name == "KCa"
@@ -1863,7 +1863,7 @@ def test_ikca_is_not_calcium_ion_channel():
 
 def test_current_clamp_with_ikca():
     """Current clamp with KCa channel adds IKCa and q columns."""
-    from patch_sim.calcium import CalciumDynamics
+    from neuroclamp.calcium import CalciumDynamics
 
     neuron = _hh_with(
         make_ikca_channel(),
@@ -1884,7 +1884,7 @@ def test_current_clamp_with_ikca():
 
 def test_current_clamp_ikca_gating_in_bounds():
     """IKCa gating variable q stays in [0, 1] during current clamp."""
-    from patch_sim.calcium import CalciumDynamics
+    from neuroclamp.calcium import CalciumDynamics
 
     neuron = _hh_with(
         make_ikca_channel(),
@@ -1932,7 +1932,7 @@ def test_ical_activation_increases_with_depolarization():
 
 def test_make_ical_channel_defaults():
     """make_ical_channel() produces a channel with the expected defaults."""
-    from patch_sim.constants import DEFAULT_G_ICAL
+    from neuroclamp.constants import DEFAULT_G_ICAL
 
     ch = make_ical_channel()
     assert ch.name == "CaL"
@@ -1949,7 +1949,7 @@ def test_make_ical_channel_defaults():
 
 def test_current_clamp_with_ical_extra_columns():
     """Current clamp with CaL channel adds ICaL, d, and f columns."""
-    from patch_sim.calcium import CalciumDynamics
+    from neuroclamp.calcium import CalciumDynamics
 
     neuron = _hh_with(
         make_ical_channel(),
@@ -1971,7 +1971,7 @@ def test_current_clamp_with_ical_extra_columns():
 
 def test_current_clamp_ical_gating_in_bounds():
     """ICaL gating variables d and f stay in [0, 1] during current clamp."""
-    from patch_sim.calcium import CalciumDynamics
+    from neuroclamp.calcium import CalciumDynamics
 
     neuron = _hh_with(
         make_ical_channel(),
@@ -1993,7 +1993,7 @@ def test_current_clamp_ical_gating_in_bounds():
 
 def test_voltage_clamp_with_ical_extra_columns():
     """Voltage clamp with CaL channel adds ICaL, d, and f columns."""
-    from patch_sim.calcium import CalciumDynamics
+    from neuroclamp.calcium import CalciumDynamics
 
     neuron = _hh_with(
         make_ical_channel(),
@@ -2044,7 +2044,7 @@ def test_icat_activation_increases_with_depolarization():
 
 def test_make_icat_channel_defaults():
     """make_icat_channel() produces a channel with the expected defaults."""
-    from patch_sim.constants import DEFAULT_G_ICAT
+    from neuroclamp.constants import DEFAULT_G_ICAT
 
     ch = make_icat_channel()
     assert ch.name == "CaT"
@@ -2061,7 +2061,7 @@ def test_make_icat_channel_defaults():
 
 def test_current_clamp_with_icat_extra_columns():
     """Current clamp with CaT channel adds ICaT, dt, and ft columns."""
-    from patch_sim.calcium import CalciumDynamics
+    from neuroclamp.calcium import CalciumDynamics
 
     neuron = _hh_with(
         make_icat_channel(),
@@ -2083,7 +2083,7 @@ def test_current_clamp_with_icat_extra_columns():
 
 def test_current_clamp_icat_gating_in_bounds():
     """ICaT gating variables dt and ft stay in [0, 1] during current clamp."""
-    from patch_sim.calcium import CalciumDynamics
+    from neuroclamp.calcium import CalciumDynamics
 
     neuron = _hh_with(
         make_icat_channel(),
@@ -2105,7 +2105,7 @@ def test_current_clamp_icat_gating_in_bounds():
 
 def test_voltage_clamp_with_icat_extra_columns():
     """Voltage clamp with CaT channel adds ICaT, dt, and ft columns."""
-    from patch_sim.calcium import CalciumDynamics
+    from neuroclamp.calcium import CalciumDynamics
 
     neuron = _hh_with(
         make_icat_channel(),
@@ -2128,7 +2128,7 @@ def test_voltage_clamp_with_icat_extra_columns():
 
 def test_make_trn_icat_channel_defaults():
     """make_trn_icat_channel() produces a channel with the expected defaults."""
-    from patch_sim.constants import DEFAULT_G_ICAT
+    from neuroclamp.constants import DEFAULT_G_ICAT
 
     ch = make_trn_icat_channel()
     assert ch.name == "CaT"
@@ -2301,7 +2301,7 @@ def test_ican_activation_increases_with_depolarization():
 
 def test_make_ican_channel_defaults():
     """make_ican_channel() produces a channel with the expected defaults."""
-    from patch_sim.constants import DEFAULT_G_ICAN
+    from neuroclamp.constants import DEFAULT_G_ICAN
 
     ch = make_ican_channel()
     assert ch.name == "CaN"
@@ -2318,7 +2318,7 @@ def test_make_ican_channel_defaults():
 
 def test_current_clamp_with_ican_extra_columns():
     """Current clamp with CaN channel adds ICaN, dn, and fn columns."""
-    from patch_sim.calcium import CalciumDynamics
+    from neuroclamp.calcium import CalciumDynamics
 
     neuron = _hh_with(
         make_ican_channel(),
@@ -2340,7 +2340,7 @@ def test_current_clamp_with_ican_extra_columns():
 
 def test_current_clamp_ican_gating_in_bounds():
     """ICaN gating variables dn and fn stay in [0, 1] during current clamp."""
-    from patch_sim.calcium import CalciumDynamics
+    from neuroclamp.calcium import CalciumDynamics
 
     neuron = _hh_with(
         make_ican_channel(),
@@ -2362,7 +2362,7 @@ def test_current_clamp_ican_gating_in_bounds():
 
 def test_voltage_clamp_with_ican_extra_columns():
     """Voltage clamp with CaN channel adds ICaN, dn, and fn columns."""
-    from patch_sim.calcium import CalciumDynamics
+    from neuroclamp.calcium import CalciumDynamics
 
     neuron = _hh_with(
         make_ican_channel(),
@@ -3415,8 +3415,8 @@ def test_stn_preset_uses_otsuka_na_kinetics() -> None:
     Replaces the pre-#320 factory-identity check; STN's K is now Kv3.1
     (no HH-style core K), so we only assert the Na kinetics structurally.
     """
-    from patch_sim.constants import STN
-    from patch_sim.presets import NEURON_PRESETS
+    from neuroclamp.constants import STN
+    from neuroclamp.presets import NEURON_PRESETS
 
     neuron = NEURON_PRESETS[STN]()
     by_name = {ch.name: ch for ch in neuron.channels}

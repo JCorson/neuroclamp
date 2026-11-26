@@ -17,16 +17,16 @@ import os
 import numpy as np
 import pytest
 
-from patch_sim.analysis.ap_metrics import APAnalysisResult, SpikeMetrics
-from patch_sim.analysis.burst_metrics import BurstAnalysisResult
-from patch_sim.analysis.calcium_transients import CalciumTransient
-from patch_sim.constants import CURRENT_CLAMP, VOLTAGE_CLAMP
+from neuroclamp.analysis.ap_metrics import APAnalysisResult, SpikeMetrics
+from neuroclamp.analysis.burst_metrics import BurstAnalysisResult
+from neuroclamp.analysis.calcium_transients import CalciumTransient
+from neuroclamp.constants import CURRENT_CLAMP, VOLTAGE_CLAMP
 
 # Reflex's metaclass and instance guards both require a testing environment.
 os.environ.setdefault("PYTEST_CURRENT_TEST", "test_simulation_helpers.py::setup")
 pytest.importorskip("reflex")
 
-from patch_sim_ui.state._analysis_format import (  # noqa: E402
+from neuroclamp_ui.state._analysis_format import (  # noqa: E402
     _build_phase_plane_data,
     _compute_burst_data,
     _compute_cc_multi_sweep_analysis,
@@ -36,7 +36,7 @@ from patch_sim_ui.state._analysis_format import (  # noqa: E402
     _format_ca_transient_dict,
     _serialise_burst_summary,
 )
-from patch_sim_ui.sweep import Sweep  # noqa: E402
+from neuroclamp_ui.sweep import Sweep  # noqa: E402
 
 # ---------------------------------------------------------------------------
 # Fixture helpers
@@ -167,7 +167,7 @@ def _make_vc_sweep(label: str = "0 mV") -> Sweep:
     Returns:
         A populated :class:`Sweep` in ``VOLTAGE_CLAMP`` mode.  The total
         current shape (zero pre, peak inward 10–25 ms, steady-state 25–60
-        ms) matches :func:`patch_sim.analyze_iv`'s default sample windows.
+        ms) matches :func:`neuroclamp.analyze_iv`'s default sample windows.
     """
     n = 200
     time = np.linspace(0.0, 100.0, n)

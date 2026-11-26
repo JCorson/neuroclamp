@@ -1,1 +1,1 @@
-"""Integration tests for the patch_sim simulation pipeline."""
+"""Integration tests for the neuroclamp simulation pipeline."""

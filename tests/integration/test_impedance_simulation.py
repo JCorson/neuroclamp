@@ -1,4 +1,4 @@
-"""Integration tests for patch_sim.analysis.impedance against real simulations.
+"""Integration tests for neuroclamp.analysis.impedance against real simulations.
 
 Runs a chirp current-clamp protocol through the full simulation pipeline and
 verifies that the resulting impedance profile is structurally sound,
@@ -9,13 +9,13 @@ Unit tests with synthetic signals live in tests/unit/test_impedance.py.
 import numpy as np
 import pytest
 
-import patch_sim
-from patch_sim.constants import FREQUENCY_RESPONSE, SIM_SAMPLING_FREQ
-from patch_sim.presets import (
+import neuroclamp
+from neuroclamp.constants import FREQUENCY_RESPONSE, SIM_SAMPLING_FREQ
+from neuroclamp.presets import (
     NEURON_PRESETS,
     make_ca1_pyramidal,
 )
-from patch_sim.presets.protocols import build_protocol_from_preset
+from neuroclamp.presets.protocols import build_protocol_from_preset
 
 # 1000 ms matches the tuned FREQUENCY_RESPONSE preset and gives 1 Hz frequency
 # resolution — fine enough to bracket the −3 dB width of CA1's few-Hz Ih
@@ -36,7 +36,7 @@ def _run_chirp_profile(neuron, amplitude: float):
     Returns:
         Tuple of (ImpedanceProfile or None, voltage trace array in mV).
     """
-    stimulus = patch_sim.chirp_current(
+    stimulus = neuroclamp.chirp_current(
         duration=_DURATION_MS,
         dc_offset=0.0,
         amplitude=amplitude,
@@ -44,10 +44,10 @@ def _run_chirp_profile(neuron, amplitude: float):
         end_frequency=_F_END,
         sampling_frequency=SIM_SAMPLING_FREQ,
     )
-    result = patch_sim.simulate_current_clamp(neuron, stimulus)
+    result = neuroclamp.simulate_current_clamp(neuron, stimulus)
     time = np.asarray(result["time"])
     voltage = np.asarray(result["voltage"])
-    profile = patch_sim.analyze_impedance(
+    profile = neuroclamp.analyze_impedance(
         time, voltage, stimulus, 0.0, _DURATION_MS, _F_START, _F_END
     )
     return profile, voltage
@@ -126,11 +126,11 @@ def test_frequency_response_preset_yields_profile_for_every_neuron(name: str) ->
         neuron_preset=name,
         sampling_frequency=SIM_SAMPLING_FREQ,
     )[0]
-    result = patch_sim.simulate_current_clamp(neuron, stim)
+    result = neuroclamp.simulate_current_clamp(neuron, stim)
     time = np.asarray(result["time"])
     voltage = np.asarray(result["voltage"])
     duration = float(time[-1])
-    profile = patch_sim.analyze_impedance(
+    profile = neuroclamp.analyze_impedance(
         time, voltage, stim, 0.0, duration, _F_START, _F_END, area_cm2=neuron.area_cm2
     )
 

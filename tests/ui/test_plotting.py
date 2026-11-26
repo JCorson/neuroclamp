@@ -1,4 +1,4 @@
-"""Unit tests for the patch_sim_ui.plotting package.
+"""Unit tests for the neuroclamp_ui.plotting package.
 
 Covers Sweep.from_result, build_figure, and _build_hover_tables.
 All three are pure functions with no Reflex dependency.
@@ -11,16 +11,16 @@ import numpy as np
 import plotly.graph_objects as go
 import pytest
 
-from patch_sim_ui.constants import CC_VOLTAGE_COLOR, STIMULUS_COLOR
-from patch_sim_ui.plotting import (
+from neuroclamp_ui.constants import CC_VOLTAGE_COLOR, STIMULUS_COLOR
+from neuroclamp_ui.plotting import (
     TraceVisibility,
     build_figure,
     build_inactivation_figure,
     build_tau_v_figure,
     compute_trace_visibility_map,
 )
-from patch_sim_ui.plotting.traces import _build_hover_tables
-from patch_sim_ui.sweep import Sweep
+from neuroclamp_ui.plotting.traces import _build_hover_tables
+from neuroclamp_ui.sweep import Sweep
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -678,7 +678,7 @@ def test_build_hover_tables_stride_2_length() -> None:
 
 def test_compute_trace_visibility_map_cc_single_sweep_gating_fields() -> None:
     """CC single sweep maps the registry's per-channel show_*_gating fields."""
-    from patch_sim_ui.channels import GATING_FIELD_MAP
+    from neuroclamp_ui.channels import GATING_FIELD_MAP
 
     sweep = _make_sweep(mode="Current Clamp")
     result = compute_trace_visibility_map(
@@ -697,7 +697,7 @@ def test_compute_trace_visibility_map_cc_single_sweep_gating_fields() -> None:
 
 def test_compute_trace_visibility_map_vc_single_sweep_classic_fields() -> None:
     """VC single sweep maps the registry-derived show_* fields to indices."""
-    from patch_sim_ui.channels import CURRENT_FIELD_MAP, GATING_FIELD_MAP
+    from neuroclamp_ui.channels import CURRENT_FIELD_MAP, GATING_FIELD_MAP
 
     sweep = _make_sweep(mode="Voltage Clamp")
     result = compute_trace_visibility_map(
@@ -719,7 +719,7 @@ def test_compute_trace_visibility_map_vc_single_sweep_classic_fields() -> None:
 
 def test_compute_trace_visibility_map_cc_multi_sweep_accumulates_indices() -> None:
     """Multi-sweep CC maps each field to one index per sweep."""
-    from patch_sim_ui.channels import GATING_FIELD_MAP
+    from neuroclamp_ui.channels import GATING_FIELD_MAP
 
     sweeps = [_make_sweep(mode="Current Clamp"), _make_sweep(mode="Current Clamp")]
     result = compute_trace_visibility_map(
@@ -748,7 +748,7 @@ def test_compute_trace_visibility_map_cc_additional_gating_mapped() -> None:
 
 def test_compute_trace_visibility_map_vc_additional_current_mapped() -> None:
     """VC sweep with auxiliary current maps the field to the correct index."""
-    from patch_sim_ui.channels import GATING_FIELD_MAP
+    from neuroclamp_ui.channels import GATING_FIELD_MAP
 
     extra = {"IFoo": [0.0] * _N}
     sweep = _make_sweep(mode="Voltage Clamp", extra_cols=extra)
@@ -780,7 +780,7 @@ def test_compute_trace_visibility_map_multi_gating_keys_same_field() -> None:
 
 def test_compute_trace_visibility_map_unknown_additional_key_advances_counter() -> None:
     """Additional keys absent from the field map still advance the index counter."""
-    from patch_sim_ui.channels import GATING_FIELD_MAP
+    from neuroclamp_ui.channels import GATING_FIELD_MAP
 
     extra = {"IUnknown": [0.0] * _N}
     sweep = _make_sweep(mode="Voltage Clamp", extra_cols=extra)

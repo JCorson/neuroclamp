@@ -6,7 +6,7 @@ This page covers the second and fourth steps of the workflow: building stimulus
 ## Clamp modes
 
 A simulation runs in one of two modes, identified by the constants
-`patch_sim.CURRENT_CLAMP` (`"Current Clamp"`) and `patch_sim.VOLTAGE_CLAMP`
+`neuroclamp.CURRENT_CLAMP` (`"Current Clamp"`) and `neuroclamp.VOLTAGE_CLAMP`
 (`"Voltage Clamp"`):
 
 - **Current clamp** injects a current waveform and records the resulting
@@ -17,7 +17,7 @@ A simulation runs in one of two modes, identified by the constants
 ## Current-clamp protocols
 
 The available current-clamp protocol types are listed in
-`patch_sim.CURRENT_PROTOCOLS`:
+`neuroclamp.CURRENT_PROTOCOLS`:
 
 | Type | Builder | Description |
 | --- | --- | --- |
@@ -36,7 +36,7 @@ dispatches to them by name with a uniform keyword interface.
 ## Voltage-clamp protocols
 
 The available voltage-clamp protocol types are listed in
-`patch_sim.VOLTAGE_PROTOCOLS`:
+`neuroclamp.VOLTAGE_PROTOCOLS`:
 
 | Type | Builder | Description |
 | --- | --- | --- |
@@ -47,7 +47,7 @@ The available voltage-clamp protocol types are listed in
 
 The dispatcher is `build_voltage_protocol(protocol_type, ...)`. The
 steady-state-inactivation protocol type is named by
-`patch_sim.INACTIVATION_PROTOCOL` (`"Inactivation"`).
+`neuroclamp.INACTIVATION_PROTOCOL` (`"Inactivation"`).
 
 ## Protocol presets
 
@@ -55,15 +55,15 @@ For ready-made experiments, `build_protocol_from_preset` composes a named
 protocol preset with a neuron's per-cell adjustments:
 
 ```python
-import patch_sim
+import neuroclamp
 
 # (protocol preset name, neuron preset name)
-protocol = patch_sim.build_protocol_from_preset(
+protocol = neuroclamp.build_protocol_from_preset(
     "F-I Curve", "Cortical Pyramidal Neuron"
 )
 ```
 
-The protocol-preset names are in `patch_sim.PROTOCOL_PRESET_NAMES`: **Action
+The protocol-preset names are in `neuroclamp.PROTOCOL_PRESET_NAMES`: **Action
 Potential**, **Subthreshold Response**, **Repetitive Firing**, **F-I Curve**,
 **Hyperpolarization Steps**, **I-V Curve**, **Na+ Channel Activation**,
 **Steady-State Inactivation**, and **Frequency Response**. These are the presets
@@ -78,8 +78,8 @@ series produce one row per sweep, driven by the multi-sweep runner.
 The two core runners take a `Neuron` and a stimulus array:
 
 ```python
-result = patch_sim.simulate_current_clamp(neuron, current_external=stimulus)
-result = patch_sim.simulate_voltage_clamp(neuron, voltage_protocol=command)
+result = neuroclamp.simulate_current_clamp(neuron, current_external=stimulus)
+result = neuroclamp.simulate_voltage_clamp(neuron, voltage_protocol=command)
 ```
 
 Both return a `SimulationResult` — a NumPy structured array whose fields include
@@ -92,7 +92,7 @@ channel, and the gating variables. Related entry points:
 
 ## Analysis
 
-The `patch_sim.analysis` subpackage turns a recorded trace into physiological
+The `neuroclamp.analysis` subpackage turns a recorded trace into physiological
 metrics. Each family has a high-level entry point and a typed result object.
 
 - **Action potentials** — `analyze_aps(time, voltage)` returns an

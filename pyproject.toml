@@ -1,5 +1,5 @@
 [project]
-name = "patch-sim"
+name = "neuroclamp"
 version = "0.1.0"
 description = "Patch clamp experiment simulator implementing the Hodgkin-Huxley model for neuronal electrophysiology"
 readme = "README.md"
@@ -37,26 +37,26 @@ ui = [
 ]
 
 [project.scripts]
-patch-sim = "patch_sim_ui.cli:main"
+neuroclamp = "neuroclamp_ui.cli:main"
 
 [project.urls]
-Homepage = "https://github.com/JCorson/patch-sim"
-Documentation = "https://jcorson.github.io/patch-sim/"
-Source = "https://github.com/JCorson/patch-sim"
-Issues = "https://github.com/JCorson/patch-sim/issues"
-Changelog = "https://github.com/JCorson/patch-sim/blob/main/CHANGELOG.md"
+Homepage = "https://github.com/JCorson/neuroclamp"
+Documentation = "https://jcorson.github.io/neuroclamp/"
+Source = "https://github.com/JCorson/neuroclamp"
+Issues = "https://github.com/JCorson/neuroclamp/issues"
+Changelog = "https://github.com/JCorson/neuroclamp/blob/main/CHANGELOG.md"
 
 [build-system]
 requires = ["hatchling>=1.27"]
 build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
-packages = ["patch_sim", "patch_sim_ui"]
+packages = ["neuroclamp", "neuroclamp_ui"]
 
 [tool.hatch.build.targets.sdist]
 include = [
-    "/patch_sim",
-    "/patch_sim_ui",
+    "/neuroclamp",
+    "/neuroclamp_ui",
     "/README.md",
     "/LICENSE",
     "/CHANGELOG.md",
@@ -73,25 +73,25 @@ ignore = []
 convention = "google"
 
 [tool.ty.src]
-include = ["./patch_sim", "./patch_sim_ui", "./tests"]
+include = ["./neuroclamp", "./neuroclamp_ui", "./tests"]
 
 [[tool.ty.overrides]]
 include = [
-    "patch_sim_ui/**",
+    "neuroclamp_ui/**",
     "tests/ui/test_state.py",
     "tests/ui/test_plotting.py",
     "tests/ui/test_traces_api.py",
 ]
 
 [tool.ty.overrides.analysis]
-replace-imports-with-any = ["reflex.**", "plotly.**", "patch_sim_ui.**", "starlette.**"]
+replace-imports-with-any = ["reflex.**", "plotly.**", "neuroclamp_ui.**", "starlette.**"]
 
 # NumPy structured arrays use string-key subscript assignment which ty does not
 # model. Suppress the false-positive invalid-assignment errors in files that
 # build or read structured arrays.
 [[tool.ty.overrides]]
 include = [
-    "patch_sim/clamp_simulations.py",
+    "neuroclamp/clamp_simulations.py",
     "tests/ui/test_plotting.py",
     "tests/ui/test_state.py",
     "tests/unit/test_burst_metrics.py",

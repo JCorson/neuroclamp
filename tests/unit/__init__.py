@@ -1,1 +1,1 @@
-"""Unit tests for the patch_sim core library."""
+"""Unit tests for the neuroclamp core library."""

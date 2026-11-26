@@ -1,4 +1,4 @@
-"""Unit tests for patch_sim.analysis.fi_curve.
+"""Unit tests for neuroclamp.analysis.fi_curve.
 
 Covers compute_fi_point, analyze_fi, and estimate_rheobase with synthetic
 voltage traces and edge cases.
@@ -9,7 +9,7 @@ tests/integration/test_fi_curve_simulation.py.
 import numpy as np
 import pytest
 
-from patch_sim.analysis.fi_curve import (
+from neuroclamp.analysis.fi_curve import (
     FIAnalysisResult,
     FIPoint,
     analyze_fi,
