@@ -8,9 +8,11 @@ from __future__ import annotations
 import json
 from typing import Any
 
+from exprs import Const, Div, Expr, Sub
 from translate import to_tree_neuron
 
 import neuroclamp as nc
+from neuroclamp.channels import GatingVariable
 from neuroclamp.channels.base import _CA_NERNST_FLOOR
 from neuroclamp.clamp_simulations import _V_CLAMP_MAX, _V_CLAMP_MIN
 from neuroclamp.electrochemistry import F, R
@@ -18,7 +20,36 @@ from neuroclamp.neuron import Neuron
 from neuroclamp.utils import SAFE_EXP_CLIP_MAX
 
 #: Spec format version; must match ``SPEC_VERSION`` in the Rust crate.
-SPEC_VERSION = 1
+SPEC_VERSION = 2
+
+
+def _kinetics(gate: GatingVariable) -> dict[str, Any]:
+    """Lower a gate's rates, recognizing the steady-state/time-constant form.
+
+    ``exprs.inf_tau`` builds ``alpha = inf / tau`` and
+    ``beta = (1 - inf) / tau``. When a gate has exactly that shape (nodes
+    compare by value), the spec carries ``inf`` and ``tau`` once so the
+    backend evaluates them once per sub-step instead of twice.
+
+    Args:
+        gate: A gate whose rates are expression trees.
+
+    Returns:
+        ``{"form": "inf_tau", "inf": …, "tau": …}`` or
+        ``{"form": "alpha_beta", "alpha": …, "beta": …}``.
+    """
+    alpha, beta = gate.alpha, gate.beta
+    if (
+        isinstance(alpha, Div)
+        and isinstance(beta, Div)
+        and isinstance(beta.a, Sub)
+        and beta.a.a == Const(1.0)
+        and beta.a.b == alpha.a
+        and beta.b == alpha.b
+    ):
+        return {"form": "inf_tau", "inf": alpha.a.to_spec(), "tau": alpha.b.to_spec()}
+    assert isinstance(alpha, Expr) and isinstance(beta, Expr)
+    return {"form": "alpha_beta", "alpha": alpha.to_spec(), "beta": beta.to_spec()}
 
 
 def lower(neuron: Neuron) -> dict[str, Any]:
@@ -56,8 +87,7 @@ def lower(neuron: Neuron) -> dict[str, Any]:
         "gates": [
             {
                 "name": g.name,
-                "alpha": g.alpha.to_spec(),  # type: ignore[attr-defined]
-                "beta": g.beta.to_spec(),  # type: ignore[attr-defined]
+                "kinetics": _kinetics(g),
                 "uses_calcium": g.alpha.uses_calcium  # type: ignore[attr-defined]
                 or g.beta.uses_calcium,  # type: ignore[attr-defined]
             }

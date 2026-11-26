@@ -126,7 +126,8 @@ impl Model {
 
         let phi = self.spec.phi;
         for ((gate, &x), d) in self.spec.gates.iter().zip(gates).zip(d_gates.iter_mut()) {
-            *d = phi * (gate.alpha.eval(v, ca) * (1.0 - x) - gate.beta.eval(v, ca) * x);
+            let (alpha, beta) = gate.kinetics.rates(v, ca);
+            *d = phi * (alpha * (1.0 - x) - beta * x);
         }
 
         let dca = match &self.spec.calcium {
@@ -275,7 +276,7 @@ mod tests {
     /// A passive membrane: one ungated leak channel and no gates.
     fn passive_model(g_leak: f64, e_leak: f64, c_m: f64) -> Model {
         let json = format!(
-            r#"{{"version": 1, "c_m": {c_m}, "phi": 1.0, "exp_clip": 100,
+            r#"{{"version": 2, "c_m": {c_m}, "phi": 1.0, "exp_clip": 100,
                  "v_clamp_mv": [-150, 150], "gates": [], "calcium": null,
                  "channels": [{{"name": "L", "g_max": {g_leak}, "gates": [],
                                 "carries_calcium": false, "e_rev": {e_leak}}}]}}"#
