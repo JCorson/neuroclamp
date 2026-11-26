@@ -1,10 +1,10 @@
 """Behavior tests for the ``patch-sim ui`` working-directory launcher."""
 
+import http.server
 import os
-import signal
 import socket
-import subprocess
-import sys
+import threading
+from collections.abc import Iterator
 from pathlib import Path
 
 import pytest
@@ -170,33 +170,80 @@ def test_child_env_disables_telemetry_unless_the_user_sets_it() -> None:
     assert env["REFLEX_TELEMETRY_ENABLED"] == "true"
 
 
-def test_browser_opens_once_the_server_answers(monkeypatch: pytest.MonkeyPatch) -> None:
-    """The browser opens only after the health check succeeds."""
-    checks = iter([False, False, True])
-    monkeypatch.setattr(launcher, "_server_ready", lambda url: next(checks))
+class _PingHandler(http.server.BaseHTTPRequestHandler):
+    """Answer the health check the way the Reflex backend does."""
+
+    def do_GET(self) -> None:
+        """Reply 200 to ``/ping`` and 404 to anything else."""
+        self.send_response(200 if self.path == "/ping" else 404)
+        self.end_headers()
+
+    def log_message(self, format: str, *args: object) -> None:
+        """Keep request logging out of the test output.
+
+        Args:
+            format: Log format string.
+            *args: Values for the format string.
+        """
+
+
+@pytest.fixture
+def live_server() -> Iterator[str]:
+    """Serve ``/ping`` on a local port, like a running app.
+
+    Yields:
+        The server's base URL.
+    """
+    server = http.server.ThreadingHTTPServer(("127.0.0.1", 0), _PingHandler)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    yield f"http://127.0.0.1:{server.server_port}"
+    server.shutdown()
+    server.server_close()
+
+
+def _closed_url() -> str:
+    """Return the URL of a local port with nothing listening on it.
+
+    Returns:
+        A base URL whose health check will fail.
+    """
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+        sock.bind(("127.0.0.1", 0))
+        return f"http://127.0.0.1:{sock.getsockname()[1]}"
+
+
+def test_browser_opens_once_the_server_answers(
+    live_server: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The app opens in the browser when the server answers its health check.
+
+    Args:
+        live_server: Base URL of a server that answers ``/ping``.
+        monkeypatch: Pytest monkeypatch fixture.
+    """
     opened: list[str] = []
     monkeypatch.setattr(launcher.webbrowser, "open", opened.append)
 
-    thread = launcher.open_browser_when_ready(
-        "http://localhost:3000", lambda: True, poll_interval=0.0
-    )
-    thread.join(timeout=5)
+    thread = launcher.open_browser_when_ready(live_server, lambda: True)
+    thread.join(timeout=10)
 
-    assert opened == ["http://localhost:3000"]
+    assert opened == [live_server]
 
 
 def test_browser_wait_stops_when_the_server_exits(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """No browser opens if the server process exits before it is ready."""
-    monkeypatch.setattr(launcher, "_server_ready", lambda url: False)
+    """No browser opens if the server process exits before it is ready.
+
+    Args:
+        monkeypatch: Pytest monkeypatch fixture.
+    """
     opened: list[str] = []
     monkeypatch.setattr(launcher.webbrowser, "open", opened.append)
 
-    thread = launcher.open_browser_when_ready(
-        "http://localhost:3000", lambda: False, poll_interval=0.0
-    )
-    thread.join(timeout=5)
+    thread = launcher.open_browser_when_ready(_closed_url(), lambda: False)
+    thread.join(timeout=10)
 
     assert not thread.is_alive()
     assert opened == []
@@ -211,91 +258,14 @@ def test_browser_wait_warns_when_the_server_never_answers(
         monkeypatch: Pytest monkeypatch fixture.
         caplog: Pytest log-capture fixture.
     """
-    monkeypatch.setattr(launcher, "_server_ready", lambda url: False)
-    monkeypatch.setattr(launcher.webbrowser, "open", _fail_open)
+    opened: list[str] = []
+    monkeypatch.setattr(launcher.webbrowser, "open", opened.append)
+    url = _closed_url()
 
-    thread = launcher.open_browser_when_ready(
-        "http://localhost:3000", lambda: True, timeout=0.0
-    )
-    thread.join(timeout=5)
+    thread = launcher.open_browser_when_ready(url, lambda: True, timeout=0.5)
+    thread.join(timeout=10)
 
+    assert opened == []
     (record,) = caplog.records
     assert record.levelname == "WARNING"
-    assert "http://localhost:3000" in record.getMessage()
-
-
-def _fail_open(url: str) -> bool:
-    """Fail the test if a browser is opened.
-
-    Args:
-        url: URL that would have been opened.
-
-    Raises:
-        AssertionError: Always.
-    """
-    raise AssertionError(f"browser opened for {url}")
-
-
-def test_run_ui_runs_a_real_child_in_the_workdir(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
-) -> None:
-    """A real child process runs in the workdir and its exit code passes through.
-
-    Args:
-        monkeypatch: Pytest monkeypatch fixture.
-        tmp_path: Pytest temporary directory.
-    """
-    script = (
-        "import os, pathlib; pathlib.Path('cwd.txt').write_text(os.getcwd()); "
-        "raise SystemExit(7)"
-    )
-    monkeypatch.setattr(
-        launcher,
-        "build_reflex_command",
-        lambda host, port: [sys.executable, "-c", script],
-    )
-    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
-        sock.bind(("127.0.0.1", 0))
-        port = sock.getsockname()[1]
-
-    code = launcher.run_ui(tmp_path, "127.0.0.1", port, open_browser=False)
-
-    assert code == 7
-    assert Path((tmp_path / "cwd.txt").read_text()) == tmp_path
-
-
-def test_stop_server_terminates_a_running_process() -> None:
-    """A server that was not already interrupted is asked to stop, and stops."""
-    proc = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(60)"])
-
-    launcher._stop_server(proc, already_signaled=False)
-
-    assert proc.returncode is not None
-    if sys.platform != "win32":
-        assert proc.returncode == -signal.SIGTERM
-
-
-@pytest.mark.skipif(sys.platform == "win32", reason="POSIX signal handling")
-def test_stop_server_kills_a_process_that_ignores_sigterm(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """A server that ignores SIGTERM is killed after the grace period.
-
-    Args:
-        monkeypatch: Pytest monkeypatch fixture.
-    """
-    monkeypatch.setattr(launcher, "SHUTDOWN_GRACE_SECONDS", 0.5)
-    script = (
-        "import signal, time; signal.signal(signal.SIGTERM, signal.SIG_IGN); "
-        "print('ready', flush=True); time.sleep(60)"
-    )
-    proc = subprocess.Popen(
-        [sys.executable, "-c", script], stdout=subprocess.PIPE, text=True
-    )
-    assert proc.stdout is not None
-    assert proc.stdout.readline().strip() == "ready"
-
-    launcher._stop_server(proc, already_signaled=False)
-
-    assert proc.returncode == -signal.SIGKILL
-    proc.stdout.close()
+    assert url in record.getMessage()

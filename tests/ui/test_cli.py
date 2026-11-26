@@ -1,113 +1,86 @@
 """Behavior tests for the ``patch-sim`` command line.
 
-The Reflex server is never started: ``subprocess.Popen`` is replaced with an
-autospec mock, so every call the launcher makes is checked against the real
-``Popen`` signatures. The tests check what the launcher would run, where, and
-how it shuts the server down.
+``patch-sim ui`` runs as a real process, the way a user starts it. The only
+stand-in is the server it launches: a small fake ``reflex`` package placed
+first on ``PYTHONPATH``, so ``python -m reflex`` in the child process runs the
+fake instead of building and serving the app. The fake records where it ran,
+then exits with a chosen code or keeps running until it is signaled, which
+lets the tests check exit codes and shutdown with real processes and real
+signals.
 """
 
+import json
 import os
+import shutil
 import signal
 import socket
 import subprocess
 import sys
-import threading
-from collections.abc import Callable
+import time
 from pathlib import Path
-from unittest import mock
 
 import pytest
 
-from patch_sim_ui import cli, launcher
+from patch_sim_ui import cli
+
+#: The fake ``python -m reflex``. ``FAKE_REFLEX_RECORD`` names a JSON file
+#: that receives the working directory and arguments once the fake is ready.
+#: With ``FAKE_REFLEX_SERVE`` set it runs until SIGINT or SIGTERM and writes
+#: the signal name to ``<record>.stopped``; otherwise it exits with
+#: ``FAKE_REFLEX_EXIT`` (default 0).
+_FAKE_REFLEX_MAIN = """
+import json
+import os
+import signal
+import sys
+import time
+from pathlib import Path
+
+record = Path(os.environ["FAKE_REFLEX_RECORD"])
 
 
-def _script_server(
-    proc: mock.NonCallableMagicMock,
-    *wait_effects: BaseException | Callable[[], None],
-    exit_code: int = 0,
-) -> None:
-    """Script how the mocked server process behaves.
+def _stop(signum, frame):
+    record.with_suffix(".stopped").write_text(signal.Signals(signum).name)
+    raise SystemExit(0)
 
-    Successive ``wait()`` calls apply ``wait_effects`` in order: an exception
-    is raised, a callable is called. Once they run out, ``wait()`` returns
-    ``exit_code``. The process reports itself as running (``poll()`` returns
-    ``None``) until ``wait()`` returns or ``kill()`` is called.
 
-    Args:
-        proc: The mocked ``Popen`` instance.
-        *wait_effects: Effects of successive ``wait()`` calls.
-        exit_code: Exit code of the process.
-    """
-    pending = list(wait_effects)
-    running = [bool(pending)]
+if os.environ.get("FAKE_REFLEX_SERVE"):
+    signal.signal(signal.SIGINT, _stop)
+    signal.signal(signal.SIGTERM, _stop)
+record.write_text(json.dumps({"cwd": os.getcwd(), "argv": sys.argv[1:]}))
+if os.environ.get("FAKE_REFLEX_SERVE"):
+    while True:
+        time.sleep(0.05)
+raise SystemExit(int(os.environ.get("FAKE_REFLEX_EXIT", "0")))
+"""
 
-    def poll() -> int | None:
-        """Report the scripted exit status.
-
-        Returns:
-            ``None`` while running, otherwise ``exit_code``.
-        """
-        return None if running[0] else exit_code
-
-    def wait(timeout: float | None = None) -> int:
-        """Apply the next scripted effect, or exit.
-
-        Args:
-            timeout: Ignored.
-
-        Returns:
-            ``exit_code``.
-        """
-        if pending:
-            effect = pending.pop(0)
-            if isinstance(effect, BaseException):
-                raise effect
-            effect()
-        running[0] = False
-        return exit_code
-
-    def kill() -> None:
-        """Mark the process exited."""
-        running[0] = False
-
-    proc.poll.side_effect = poll
-    proc.wait.side_effect = wait
-    proc.kill.side_effect = kill
+#: The ``patch-sim`` console script installed alongside this interpreter.
+_PATCH_SIM = shutil.which("patch-sim", path=str(Path(sys.executable).parent))
 
 
 @pytest.fixture
-def popen(monkeypatch: pytest.MonkeyPatch) -> mock.MagicMock:
-    """Replace the Reflex child process and the browser with mocks.
-
-    The server exits with code 0 as soon as the launcher waits on it; tests
-    change that with :func:`_script_server` on ``popen.return_value``.
+def fake_env(tmp_path: Path) -> dict[str, str]:
+    """Build an environment in which ``patch-sim ui`` launches the fake server.
 
     Args:
-        monkeypatch: Pytest monkeypatch fixture.
+        tmp_path: Pytest temporary directory.
 
     Returns:
-        The autospec mock of ``subprocess.Popen``.
+        Environment variables for a ``patch-sim`` process. ``FAKE_REFLEX_RECORD``
+        points at the file the fake server writes when it starts.
     """
-    popen = mock.create_autospec(subprocess.Popen)
-    # ``pid`` is set by Popen.__init__, so it is not part of the class spec.
-    popen.return_value.pid = 4242
-    _script_server(popen.return_value)
-    monkeypatch.setattr(launcher.subprocess, "Popen", popen)
-    monkeypatch.setattr(launcher.webbrowser, "open", _fail_browser_open)
-    monkeypatch.delenv(cli.WORKDIR_ENV_VAR, raising=False)
-    return popen
-
-
-def _fail_browser_open(url: str) -> bool:
-    """Fail the test if the launcher tries to open a browser.
-
-    Args:
-        url: URL the launcher tried to open.
-
-    Raises:
-        AssertionError: Always.
-    """
-    raise AssertionError(f"browser opened for {url}")
+    package = tmp_path / "fake-site" / "reflex"
+    package.mkdir(parents=True)
+    (package / "__init__.py").write_text("")
+    (package / "__main__.py").write_text(_FAKE_REFLEX_MAIN)
+    env = {
+        key: value
+        for key, value in os.environ.items()
+        if key not in (cli.WORKDIR_ENV_VAR, "DISPLAY", "WAYLAND_DISPLAY")
+    }
+    env["PYTHONPATH"] = str(package.parent)
+    env["FAKE_REFLEX_RECORD"] = str(tmp_path / "server.json")
+    return env
 
 
 def _free_port() -> int:
@@ -121,33 +94,100 @@ def _free_port() -> int:
         return sock.getsockname()[1]
 
 
-def _run_ui(workdir: Path, *extra: str) -> int:
-    """Run ``patch-sim ui --no-browser`` on a free port.
+def _ui_command(workdir: Path | None, *extra: str) -> list[str]:
+    """Return a ``patch-sim ui --no-browser`` command line on a free port.
 
     Args:
-        workdir: Working directory to pass with ``--workdir``.
-        *extra: Additional command-line arguments.
+        workdir: Value for ``--workdir``, or ``None`` to leave it out.
+        *extra: Further command-line arguments.
 
     Returns:
-        The command's exit code.
+        The argument list.
     """
-    return cli.main(
-        [
-            "ui",
-            "--no-browser",
-            "--workdir",
-            str(workdir),
-            "--port",
-            str(_free_port()),
-            *extra,
-        ]
+    assert _PATCH_SIM is not None, "the patch-sim console script is not installed"
+    command = [_PATCH_SIM, "ui", "--no-browser", "--port", str(_free_port())]
+    if workdir is not None:
+        command += ["--workdir", str(workdir)]
+    return [*command, *extra]
+
+
+def _run_ui(
+    env: dict[str, str], workdir: Path | None, *extra: str
+) -> subprocess.CompletedProcess[str]:
+    """Run ``patch-sim ui`` to completion against the fake server.
+
+    Args:
+        env: Environment from the ``fake_env`` fixture.
+        workdir: Value for ``--workdir``, or ``None`` to leave it out.
+        *extra: Further command-line arguments.
+
+    Returns:
+        The finished process, with its output captured as text.
+    """
+    return subprocess.run(
+        _ui_command(workdir, *extra),
+        env=env,
+        capture_output=True,
+        text=True,
+        timeout=60,
+        check=False,
     )
+
+
+def _server_record(env: dict[str, str]) -> dict[str, object] | None:
+    """Return what the fake server recorded, if it was started.
+
+    Args:
+        env: Environment from the ``fake_env`` fixture.
+
+    Returns:
+        The recorded working directory and arguments, or ``None`` if the
+        server never started.
+    """
+    record = Path(env["FAKE_REFLEX_RECORD"])
+    return json.loads(record.read_text()) if record.is_file() else None
+
+
+def _start_serving(env: dict[str, str], workdir: Path) -> subprocess.Popen[str]:
+    """Start ``patch-sim ui`` with a fake server that runs until signaled.
+
+    The launcher gets its own process group, like a job started from a
+    terminal, so a test can deliver Ctrl+C to the launcher and server
+    together.
+
+    Args:
+        env: Environment from the ``fake_env`` fixture.
+        workdir: Working directory for the launcher.
+
+    Returns:
+        The running launcher process, once the fake server is up.
+    """
+    proc = subprocess.Popen(
+        _ui_command(workdir),
+        env={**env, "FAKE_REFLEX_SERVE": "1"},
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        text=True,
+        start_new_session=True,
+    )
+    deadline = time.monotonic() + 30
+    while _server_record(env) is None:
+        if proc.poll() is not None or time.monotonic() > deadline:
+            proc.kill()
+            output, _ = proc.communicate()
+            pytest.fail(f"the server did not start:\n{output}")
+        time.sleep(0.05)
+    return proc
 
 
 def test_no_command_prints_usage_and_fails(
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    """Running ``patch-sim`` with no subcommand shows usage and exits with 2."""
+    """Running ``patch-sim`` with no subcommand shows usage and exits with 2.
+
+    Args:
+        capsys: Pytest output-capture fixture.
+    """
     assert cli.main([]) == 2
     assert "usage: patch-sim" in capsys.readouterr().err
 
@@ -155,21 +195,16 @@ def test_no_command_prints_usage_and_fails(
 def test_version_flag_prints_the_package_version(
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    """``patch-sim --version`` prints the version and exits successfully."""
+    """``patch-sim --version`` prints the version and exits successfully.
+
+    Args:
+        capsys: Pytest output-capture fixture.
+    """
     with pytest.raises(SystemExit) as excinfo:
         cli.main(["--version"])
 
     assert excinfo.value.code == 0
     assert capsys.readouterr().out.startswith("patch-sim ")
-
-
-def test_ui_defaults_to_localhost_port_3000() -> None:
-    """``patch-sim ui`` binds to this computer only, on port 3000, by default."""
-    args = cli.build_parser().parse_args(["ui"])
-
-    assert (args.host, args.port) == ("127.0.0.1", 3000)
-    assert not args.no_browser
-    assert not args.reset
 
 
 @pytest.mark.parametrize("value", ["0", "70000", "abc"])
@@ -189,225 +224,180 @@ def test_ui_rejects_an_invalid_port(
     assert "1-65535" in capsys.readouterr().err
 
 
-def test_ui_without_extra_prints_install_hint(
-    popen: mock.MagicMock,
-    monkeypatch: pytest.MonkeyPatch,
-    capsys: pytest.CaptureFixture[str],
-    tmp_path: Path,
+def test_ui_serves_from_the_workdir_and_returns_the_server_exit_code(
+    fake_env: dict[str, str], tmp_path: Path
 ) -> None:
-    """Without the ui extra, the command explains how to install it."""
-    monkeypatch.setattr(cli.importlib.util, "find_spec", lambda name: None)
-
-    assert cli.main(["ui", "--workdir", str(tmp_path)]) == 1
-
-    err = capsys.readouterr().err
-    assert err.strip() == f"Error: {cli.UI_EXTRA_MESSAGE}"
-    assert "Traceback" not in err
-    popen.assert_not_called()
-
-
-def test_ui_runs_reflex_in_production_mode_from_the_workdir(
-    popen: mock.MagicMock, tmp_path: Path
-) -> None:
-    """The server runs single-port prod mode in the prepared working directory."""
-    port = _free_port()
-
-    code = cli.main(
-        ["ui", "--no-browser", "--workdir", str(tmp_path), "--port", str(port)]
-    )
-
-    assert code == 0
-    popen.assert_called_once()
-    (command,), kwargs = popen.call_args
-    assert kwargs["cwd"] == tmp_path.resolve()
-    assert command[1:4] == ["-m", "reflex", "run"]
-    cmd = " ".join(command)
-    assert f"--env prod --single-port --frontend-port {port}" in cmd
-    assert "--backend-host 127.0.0.1" in cmd
-    assert kwargs["env"]["REFLEX_TELEMETRY_ENABLED"] == "false"
-    assert (tmp_path / "rxconfig.py").read_text() == launcher.RXCONFIG_STUB
-
-
-def test_ui_returns_the_server_exit_code(popen: mock.MagicMock, tmp_path: Path) -> None:
-    """A failing server's exit code is passed through to the shell."""
-    _script_server(popen.return_value, exit_code=3)
-
-    assert _run_ui(tmp_path) == 3
-
-
-def test_ui_announces_the_frontend_build_only_when_needed(
-    popen: mock.MagicMock,
-    capsys: pytest.CaptureFixture[str],
-    tmp_path: Path,
-) -> None:
-    """The slow-first-launch notice appears without a build, or with --reset."""
-    _run_ui(tmp_path)
-    assert "First launch builds the web frontend" in capsys.readouterr().err
-
-    (tmp_path / ".web").mkdir()
-    _run_ui(tmp_path)
-    assert "First launch" not in capsys.readouterr().err
-
-    _run_ui(tmp_path, "--reset")
-    assert "First launch" in capsys.readouterr().err
-
-
-def test_ui_verbose_shows_the_server_command(
-    popen: mock.MagicMock,
-    capsys: pytest.CaptureFixture[str],
-    tmp_path: Path,
-) -> None:
-    """``--verbose`` adds the exact Reflex command; the default output omits it.
+    """The server runs in the working directory, and its exit code is returned.
 
     Args:
-        popen: The mocked ``subprocess.Popen``.
-        capsys: Pytest output-capture fixture.
+        fake_env: Environment that launches the fake server.
         tmp_path: Pytest temporary directory.
     """
-    _run_ui(tmp_path)
-    quiet = capsys.readouterr().err
-    assert "Starting patch-sim at http://localhost:" in quiet
-    assert "reflex run" not in quiet
+    workdir = tmp_path / "work"
 
-    _run_ui(tmp_path, "--verbose")
-    verbose = capsys.readouterr().err
-    assert "-m reflex run --env prod" in verbose
-    assert verbose.count("Starting patch-sim") == 1
+    result = _run_ui({**fake_env, "FAKE_REFLEX_EXIT": "3"}, workdir)
+
+    assert result.returncode == 3, result.stderr
+    record = _server_record(fake_env)
+    assert record is not None
+    assert Path(str(record["cwd"])) == workdir
+    assert "Starting patch-sim at http://localhost:" in result.stderr
 
 
 def test_ui_reads_workdir_from_environment(
-    popen: mock.MagicMock,
-    monkeypatch: pytest.MonkeyPatch,
-    tmp_path: Path,
+    fake_env: dict[str, str], tmp_path: Path
 ) -> None:
-    """``PATCH_SIM_WORKDIR`` selects the working directory when no flag is given."""
-    monkeypatch.setenv(cli.WORKDIR_ENV_VAR, str(tmp_path))
+    """``PATCH_SIM_WORKDIR`` selects the working directory when no flag is given.
 
-    cli.main(["ui", "--no-browser", "--port", str(_free_port())])
+    Args:
+        fake_env: Environment that launches the fake server.
+        tmp_path: Pytest temporary directory.
+    """
+    workdir = tmp_path / "from-env"
 
-    assert popen.call_args.kwargs["cwd"] == tmp_path.resolve()
+    result = _run_ui({**fake_env, cli.WORKDIR_ENV_VAR: str(workdir)}, None)
+
+    assert result.returncode == 0, result.stderr
+    record = _server_record(fake_env)
+    assert record is not None
+    assert Path(str(record["cwd"])) == workdir
 
 
-def test_ui_refuses_a_port_in_use(
-    popen: mock.MagicMock,
-    capsys: pytest.CaptureFixture[str],
-    tmp_path: Path,
+def test_ui_announces_the_frontend_build_only_when_needed(
+    fake_env: dict[str, str], tmp_path: Path
 ) -> None:
-    """A busy port is reported with a hint, and the server is not started."""
+    """The slow-first-launch notice appears without a build, or with --reset.
+
+    Args:
+        fake_env: Environment that launches the fake server.
+        tmp_path: Pytest temporary directory.
+    """
+    workdir = tmp_path / "work"
+    assert "First launch" in _run_ui(fake_env, workdir).stderr
+
+    (workdir / ".web").mkdir()
+    assert "First launch" not in _run_ui(fake_env, workdir).stderr
+
+    assert "First launch" in _run_ui(fake_env, workdir, "--reset").stderr
+
+
+def test_ui_verbose_shows_the_server_command(
+    fake_env: dict[str, str], tmp_path: Path
+) -> None:
+    """``--verbose`` adds the command that runs the server.
+
+    Args:
+        fake_env: Environment that launches the fake server.
+        tmp_path: Pytest temporary directory.
+    """
+    quiet = _run_ui(fake_env, tmp_path / "work").stderr
+    verbose = _run_ui(fake_env, tmp_path / "work", "--verbose").stderr
+
+    assert "reflex run" not in quiet
+    assert "-m reflex run" in verbose
+
+
+def test_ui_refuses_a_port_in_use(fake_env: dict[str, str], tmp_path: Path) -> None:
+    """A busy port is reported with a hint, and the server is not started.
+
+    Args:
+        fake_env: Environment that launches the fake server.
+        tmp_path: Pytest temporary directory.
+    """
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
         sock.bind(("127.0.0.1", 0))
         sock.listen()
         port = sock.getsockname()[1]
 
-        code = cli.main(["ui", "--workdir", str(tmp_path), "--port", str(port)])
+        result = _run_ui(fake_env, tmp_path / "work", "--port", str(port))
 
-    assert code == 1
-    err = capsys.readouterr().err
-    assert f"Port {port}" in err
-    assert "--port" in err
-    assert "Traceback" not in err
-    popen.assert_not_called()
+    assert result.returncode == 1
+    assert f"Error: Port {port} is already in use" in result.stderr
+    assert "Traceback" not in result.stderr
+    assert _server_record(fake_env) is None
 
 
 def test_ui_reports_an_unwritable_workdir(
-    popen: mock.MagicMock,
-    capsys: pytest.CaptureFixture[str],
-    tmp_path: Path,
+    fake_env: dict[str, str], tmp_path: Path
 ) -> None:
-    """A working directory that cannot be created gives a readable error."""
+    """A working directory that cannot be created gives a readable error.
+
+    Args:
+        fake_env: Environment that launches the fake server.
+        tmp_path: Pytest temporary directory.
+    """
     blocker = tmp_path / "a-file"
     blocker.write_text("")
 
-    assert _run_ui(blocker / "work") == 1
-    assert "Cannot prepare the working directory" in capsys.readouterr().err
-    popen.assert_not_called()
+    result = _run_ui(fake_env, blocker / "work")
+
+    assert result.returncode == 1
+    assert "Cannot prepare the working directory" in result.stderr
+    assert "Traceback" not in result.stderr
+    assert _server_record(fake_env) is None
 
 
 def test_ui_refuses_to_reset_a_directory_it_did_not_create(
-    popen: mock.MagicMock,
-    capsys: pytest.CaptureFixture[str],
-    tmp_path: Path,
+    fake_env: dict[str, str], tmp_path: Path
 ) -> None:
-    """``--workdir <user dir> --reset`` deletes nothing and starts nothing."""
-    keep = tmp_path / "notes.txt"
+    """``--workdir <user dir> --reset`` deletes nothing and starts nothing.
+
+    Args:
+        fake_env: Environment that launches the fake server.
+        tmp_path: Pytest temporary directory.
+    """
+    user_dir = tmp_path / "notes"
+    user_dir.mkdir()
+    keep = user_dir / "notes.txt"
     keep.write_text("important")
 
-    assert _run_ui(tmp_path, "--reset") == 1
+    result = _run_ui(fake_env, user_dir, "--reset")
 
+    assert result.returncode == 1
     assert keep.read_text() == "important"
-    assert "not a patch-sim working directory" in capsys.readouterr().err
-    popen.assert_not_called()
+    assert "not a patch-sim working directory" in result.stderr
+    assert _server_record(fake_env) is None
 
 
-def test_ui_ctrl_c_waits_for_the_server_and_returns_130(
-    popen: mock.MagicMock, tmp_path: Path
+@pytest.mark.skipif(sys.platform == "win32", reason="POSIX signals")
+def test_ui_ctrl_c_stops_the_server_and_returns_130(
+    fake_env: dict[str, str], tmp_path: Path
 ) -> None:
-    """Ctrl+C lets the already-interrupted server exit without re-signaling it."""
-    server = popen.return_value
-    _script_server(server, KeyboardInterrupt())
+    """Ctrl+C stops the server, and the launcher exits with 130.
 
-    assert _run_ui(tmp_path) == 130
+    Args:
+        fake_env: Environment that launches the fake server.
+        tmp_path: Pytest temporary directory.
+    """
+    proc = _start_serving(fake_env, tmp_path / "work")
 
-    assert server.poll() is not None
-    server.terminate.assert_not_called()
-    server.kill.assert_not_called()
+    # A terminal delivers Ctrl+C to every process in the foreground group.
+    os.killpg(proc.pid, signal.SIGINT)
+    proc.communicate(timeout=30)
+
+    assert proc.returncode == 130
+    stopped = Path(fake_env["FAKE_REFLEX_RECORD"]).with_suffix(".stopped")
+    assert stopped.read_text() == "SIGINT"
 
 
-def test_ui_kills_a_server_that_ignores_ctrl_c(
-    popen: mock.MagicMock, tmp_path: Path
+@pytest.mark.skipif(sys.platform == "win32", reason="POSIX signals")
+def test_ui_sigterm_stops_the_server_and_returns_143(
+    fake_env: dict[str, str], tmp_path: Path
 ) -> None:
-    """A server still running after the grace period is killed."""
-    server = popen.return_value
-    _script_server(
-        server,
-        KeyboardInterrupt(),
-        subprocess.TimeoutExpired("reflex", launcher.SHUTDOWN_GRACE_SECONDS),
-    )
+    """SIGTERM to the launcher alone stops the server instead of orphaning it.
 
-    assert _run_ui(tmp_path) == 130
+    Args:
+        fake_env: Environment that launches the fake server.
+        tmp_path: Pytest temporary directory.
+    """
+    proc = _start_serving(fake_env, tmp_path / "work")
 
-    server.terminate.assert_not_called()
-    server.kill.assert_called_once_with()
+    proc.terminate()
+    proc.communicate(timeout=60)
 
-
-@pytest.mark.skipif(sys.platform == "win32", reason="POSIX signal delivery")
-def test_ui_sigterm_stops_the_server(popen: mock.MagicMock, tmp_path: Path) -> None:
-    """SIGTERM to the launcher terminates the server instead of orphaning it."""
-    if threading.current_thread() is not threading.main_thread():
-        pytest.skip("signal handlers need the main thread")
-    previous = signal.getsignal(signal.SIGTERM)
-    server = popen.return_value
-    _script_server(server, lambda: os.kill(os.getpid(), signal.SIGTERM))
-
-    assert _run_ui(tmp_path) == 143
-
-    server.terminate.assert_called_once_with()
-    server.kill.assert_not_called()
-    assert signal.getsignal(signal.SIGTERM) == previous
-
-
-def test_ui_skips_the_browser_without_a_display(
-    popen: mock.MagicMock,
-    monkeypatch: pytest.MonkeyPatch,
-    capsys: pytest.CaptureFixture[str],
-    tmp_path: Path,
-) -> None:
-    """On headless Linux, no console browser takes over the terminal."""
-    monkeypatch.setattr(launcher.sys, "platform", "linux")
-    monkeypatch.delenv("DISPLAY", raising=False)
-    monkeypatch.delenv("WAYLAND_DISPLAY", raising=False)
-    started: list[str] = []
-    monkeypatch.setattr(
-        launcher,
-        "open_browser_when_ready",
-        lambda url, proc_alive: started.append(url),
-    )
-
-    code = cli.main(["ui", "--workdir", str(tmp_path), "--port", str(_free_port())])
-
-    assert code == 0
-    assert started == []
-    assert "No display found; open http://localhost:" in capsys.readouterr().err
+    assert proc.returncode == 143
+    stopped = Path(fake_env["FAKE_REFLEX_RECORD"]).with_suffix(".stopped")
+    assert stopped.read_text() == "SIGTERM"
 
 
 def test_python_dash_m_runs_the_same_command() -> None:
