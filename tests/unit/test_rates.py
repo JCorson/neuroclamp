@@ -484,6 +484,35 @@ def test_compiled_expressions_still_pickle_copy_and_compare() -> None:
     assert repr(alpha) == repr(restored)
 
 
+def test_attribute_error_inside_an_expression_propagates_once() -> None:
+    """An ``AttributeError`` raised while evaluating is not a cache miss.
+
+    The wrapped function runs once per call and its error reaches the caller
+    unchained, rather than triggering a recompile and a second evaluation.
+    """
+    calls: list[float] = []
+
+    def _broken(V: float, ca_i: float) -> float:
+        """Record the call, then fail the way a buggy user function might.
+
+        Args:
+            V: Membrane voltage in mV.
+            ca_i: Intracellular Ca²⁺ concentration in mM (ignored).
+
+        Raises:
+            AttributeError: Always.
+        """
+        calls.append(V)
+        raise AttributeError("bug in user code")
+
+    expr = VoltageOnlyFn(_broken) * Sigmoid(1.0, -40.0, 8.0)
+    for attempt in range(1, 3):
+        with pytest.raises(AttributeError, match="bug in user code") as info:
+            expr(-30.0, 0.0)
+        assert len(calls) == attempt
+        assert info.value.__context__ is None
+
+
 class _Doubled(Expr):
     """An ``Expr`` subclass defined outside ``neuroclamp.rates``.
 

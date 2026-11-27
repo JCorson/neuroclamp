@@ -231,13 +231,16 @@ class Expr(Rate):
         Returns:
             The value of the expression.
         """
-        # The common case is a plain attribute call; the cache is built on the
+        # The common case is a plain attribute lookup; the cache is built on the
         # first call (or the first after unpickling), when the lookup fails.
+        # Only the lookup is guarded, so an AttributeError raised while
+        # evaluating the expression propagates instead of forcing a recompile.
         try:
-            return self._compiled(V, ca_i)
+            fn = self._compiled
         except AttributeError:
-            object.__setattr__(self, "_compiled", _compile(self))
-            return self._compiled(V, ca_i)
+            fn = _compile(self)
+            object.__setattr__(self, "_compiled", fn)
+        return fn(V, ca_i)
 
     def __getstate__(self) -> dict[str, object]:
         """Return the pickled state, without the compiled-function cache.
