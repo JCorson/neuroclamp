@@ -185,6 +185,11 @@ class Expr(Rate):
     or translated by other tools.
     """
 
+    # The compiled function, set on first call.  This bare annotation adds no
+    # class attribute (Expr is not a dataclass), so before the first call the
+    # lookup in __call__ raises AttributeError and triggers compilation.
+    _compiled: Callable[[float, float], float]
+
     def children(self) -> tuple[Rate, ...]:
         """Return this node's direct operands.
 
@@ -226,11 +231,13 @@ class Expr(Rate):
         Returns:
             The value of the expression.
         """
-        compiled = self.__dict__.get("_compiled")
-        if compiled is None:
-            compiled = _compile(self)
-            object.__setattr__(self, "_compiled", compiled)
-        return compiled(V, ca_i)
+        # The common case is a plain attribute call; the cache is built on the
+        # first call (or the first after unpickling), when the lookup fails.
+        try:
+            return self._compiled(V, ca_i)
+        except AttributeError:
+            object.__setattr__(self, "_compiled", _compile(self))
+            return self._compiled(V, ca_i)
 
     def __getstate__(self) -> dict[str, object]:
         """Return the pickled state, without the compiled-function cache.
