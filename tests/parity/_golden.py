@@ -35,16 +35,24 @@ Any real change to the kinetics moves spikes far more than
 :data:`TIME_TOL_MS` and changes subthreshold voltages far more than
 :data:`ATOL`.
 
-**Workflow.** Before starting behavior-preserving work, regenerate the
-baseline from ``main`` so it reflects the current presets, then run the parity
-tests on the work branch::
+**Workflow.** The baseline must reflect what ``main`` produces. From the work
+branch, generate it with ``main``'s code in a temporary worktree, writing into
+this branch's ``golden/`` directory, then run the parity tests::
 
-    uv run --frozen python -m tests.parity._golden   # on main: refresh baseline
-    uv run --frozen -m pytest tests/parity           # on the work branch
+    git worktree add ../neuroclamp-main main
+    (cd ../neuroclamp-main && uv run --frozen python -m tests.parity._golden \
+        --out "$OLDPWD/tests/parity/golden")
+    git worktree remove ../neuroclamp-main
+    uv run --frozen -m pytest tests/parity
+
+Generation is byte-reproducible, so the files change only when ``main``'s
+output differs from the committed baseline. Committing the refreshed files on
+the work branch is correct: they still record ``main``'s output.
 """
 
 from __future__ import annotations
 
+import argparse
 import json
 import re
 from collections import defaultdict
@@ -214,6 +222,24 @@ def compared_fields(run: GoldenRun, result: np.ndarray) -> list[str]:
     return fields
 
 
+def stored_fields(run: GoldenRun, stored: dict[str, np.ndarray]) -> list[str]:
+    """Fields the baseline holds for a run.
+
+    Args:
+        run: The run.
+        stored: Every array stored for the run's neuron (see :func:`_load`).
+
+    Returns:
+        Field names with a stored value array under ``run.key``, sorted.
+    """
+    prefix = f"{run.key}/"
+    return sorted(
+        key.removeprefix(prefix)
+        for key in stored
+        if key.startswith(prefix) and not key.endswith(".band")
+    )
+
+
 def sample_indices(n_samples: int) -> np.ndarray:
     """Indices of the stored samples: every ``STRIDE``-th step plus the last.
 
@@ -284,65 +310,88 @@ def _load(neuron: str) -> dict[str, np.ndarray]:
 def compare(run: GoldenRun, result: np.ndarray) -> list[str]:
     """Compare a simulation result against its stored golden trace.
 
+    The fields checked are the union of those the baseline holds and those the
+    result produces, so a field that disappears from the output or appears
+    without a reference is reported rather than skipped. Non-finite samples
+    always fail.
+
     Args:
         run: The run that produced *result*.
         result: Structured simulation result (any backend).
 
     Returns:
-        One human-readable message per field outside its tolerance band;
-        empty when the result matches.
+        One human-readable message per field that is missing or outside its
+        tolerance band; empty when the result matches.
     """
     stored = _load(run.neuron)
+    expected_fields = stored_fields(run, stored)
+    if not expected_fields:
+        return [f"no stored reference for {run.key!r}"]
+    produced = set(compared_fields(run, result))
     idx = sample_indices(len(result))
     failures = []
-    for field in compared_fields(run, result):
+    for field in sorted(produced - set(expected_fields)):
+        failures.append(f"{field}: no stored reference ({run.key}/{field!r})")
+    for field in expected_fields:
         key = f"{run.key}/{field}"
-        if key not in stored:
-            failures.append(f"{field}: no stored reference ({key!r})")
+        if field not in produced:
+            failures.append(f"{field}: stored in the baseline but missing from result")
+            continue
+        if f"{key}.band" not in stored:
+            failures.append(f"{field}: stored reference has no band ({key}.band)")
             continue
         expected, band = stored[key], stored[f"{key}.band"].astype(np.float64)
-        if len(expected) != len(idx):
+        if len(expected) != len(idx) or len(band) != len(idx):
             failures.append(
                 f"{field}: {len(idx)} stored samples expected, "
-                f"reference has {len(expected)}"
+                f"reference has {len(expected)} values and {len(band)} bands"
             )
             continue
         actual = np.asarray(result[field], dtype=np.float64)[idx]
         excess = np.abs(actual - expected) / band
-        if np.any(excess > 1.0):
-            worst = int(np.argmax(excess))
-            failures.append(
-                f"{field}: {int(np.sum(excess > 1.0))}/{len(idx)} samples outside "
-                f"tolerance; worst at t={idx[worst] * _DT_MS:.3f} ms: "
-                f"got {actual[worst]:.9g}, expected {expected[worst]:.9g}, "
+        # NaN compares False against anything, so test for being inside the
+        # band and treat everything else (including NaN and inf) as outside.
+        outside = ~(excess <= 1.0)
+        if np.any(outside):
+            worst = int(np.argmax(np.where(np.isfinite(excess), excess, np.inf)))
+            size = (
                 f"{excess[worst]:.3g}× the allowed deviation"
+                if np.isfinite(excess[worst])
+                else "not a finite value"
+            )
+            failures.append(
+                f"{field}: {int(np.sum(outside))}/{len(idx)} samples outside "
+                f"tolerance; worst at t={idx[worst] * _DT_MS:.3f} ms: "
+                f"got {actual[worst]:.9g}, expected {expected[worst]:.9g}, {size}"
             )
     return failures
 
 
-def max_excess(run: GoldenRun, result: np.ndarray) -> float:
-    """Largest deviation as a fraction of the allowed band (1.0 = at the limit).
+def manifest_settings() -> dict[str, object]:
+    """Comparison settings recorded in the manifest.
 
-    Args:
-        run: The run that produced *result*.
-        result: Structured simulation result.
+    The stored bands are computed from these at generation time, so the
+    manifest's copy must match the constants for the constants to take effect.
 
     Returns:
-        Maximum of ``|actual − expected| / band`` over compared fields.
+        The stride and tolerance settings, JSON-serializable.
     """
-    stored = _load(run.neuron)
-    idx = sample_indices(len(result))
-    worst = 0.0
-    for field in compared_fields(run, result):
-        key = f"{run.key}/{field}"
-        actual = np.asarray(result[field], dtype=np.float64)[idx]
-        band = stored[f"{key}.band"].astype(np.float64)
-        worst = max(worst, float(np.max(np.abs(actual - stored[key]) / band)))
-    return worst
+    return {
+        "stride": STRIDE,
+        "atol": ATOL,
+        "rtol": RTOL,
+        "time_tol_ms": TIME_TOL_MS,
+        "slope_half_window": SLOPE_HALF_WINDOW,
+    }
 
 
-def generate() -> None:
-    """Regenerate every reference file and the manifest from the library."""
+def generate(out_dir: Path = GOLDEN_DIR) -> None:
+    """Regenerate every reference file and the manifest from the library.
+
+    Args:
+        out_dir: Directory to write the ``.npz`` files and ``manifest.json``
+            into. Existing ``.npz`` files there are removed first.
+    """
     runs = golden_runs()
     with ProcessPoolExecutor() as pool:
         reduced = list(pool.map(_reference_arrays, runs))
@@ -351,25 +400,34 @@ def generate() -> None:
     for run, arrays in zip(runs, reduced, strict=True):
         by_neuron[run.neuron].update(arrays)
 
-    GOLDEN_DIR.mkdir(exist_ok=True)
-    for stale in GOLDEN_DIR.glob("*.npz"):
+    out_dir.mkdir(parents=True, exist_ok=True)
+    for stale in out_dir.glob("*.npz"):
         stale.unlink()
     for neuron, arrays in by_neuron.items():
-        np.savez_compressed(golden_file(neuron), allow_pickle=False, **arrays)
+        path = out_dir / golden_file(neuron).name
+        np.savez_compressed(path, allow_pickle=False, **arrays)
 
     manifest = {
         "neuroclamp_version": version("neuroclamp"),
-        "stride": STRIDE,
-        "atol": ATOL,
-        "rtol": RTOL,
-        "time_tol_ms": TIME_TOL_MS,
-        "slope_half_window": SLOPE_HALF_WINDOW,
+        **manifest_settings(),
         "runs": [asdict(run) for run in runs],
     }
-    (GOLDEN_DIR / "manifest.json").write_text(json.dumps(manifest, indent=2) + "\n")
-    total = sum(p.stat().st_size for p in GOLDEN_DIR.glob("*.npz"))
+    (out_dir / "manifest.json").write_text(json.dumps(manifest, indent=2) + "\n")
+    total = sum(p.stat().st_size for p in out_dir.glob("*.npz"))
     print(f"Wrote {len(runs)} runs for {len(by_neuron)} neurons ({total / 1e6:.2f} MB)")
 
 
+def main() -> None:
+    """Command-line entry point: regenerate the baseline."""
+    parser = argparse.ArgumentParser(description="Regenerate the golden traces.")
+    parser.add_argument(
+        "--out",
+        type=Path,
+        default=GOLDEN_DIR,
+        help="Directory to write into (default: this checkout's golden/).",
+    )
+    generate(parser.parse_args().out.resolve())
+
+
 if __name__ == "__main__":
-    generate()
+    main()

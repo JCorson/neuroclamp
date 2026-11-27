@@ -119,7 +119,7 @@ The shared `hh_model` fixture lives in `tests/conftest.py` and is discoverable b
 
 Pytest is configured with `-n auto --dist=loadscope` (parallel via xdist, tests in the same module pinned to the same worker).
 
-`tests/parity/` compares every neuron preset × protocol preset against a stored baseline in `tests/parity/golden/`. The baseline records what `main` produced, not what is correct, so intentional tuning of presets or kinetics is expected to make it stale and does not need it updated. Use it for changes that should not alter results (integrator refactors, rate functions expressed as data, alternative backends): refresh the baseline on `main` with `uv run --frozen python -m tests.parity._golden`, then run `uv run --frozen -m pytest tests/parity` on the work branch. During such work a failure is a regression; do not loosen the tolerances to make it pass.
+`tests/parity/` compares every neuron preset × protocol preset against a stored baseline in `tests/parity/golden/`. The baseline records what `main` produced, not what is correct, so intentional tuning of presets or kinetics is expected to make it stale and does not need it updated. Use it for changes that should not alter results (integrator refactors, rate functions expressed as data, alternative backends): from the work branch, regenerate the baseline with `main`'s code in a temporary worktree (`git worktree add ../neuroclamp-main main`, then in it `uv run --frozen python -m tests.parity._golden --out "$OLDPWD/tests/parity/golden"`, then `git worktree remove ../neuroclamp-main`), and run `uv run --frozen -m pytest tests/parity`. Generation is byte-reproducible, so the golden files change only when `main`'s output differs from the committed baseline, and committing them on the work branch is fine. During such work a failure is a regression; do not loosen the tolerances to make it pass.
 
 Additional conventions:
 - Use plain functions, not test classes
@@ -201,6 +201,6 @@ which covers `tests/unit`, `tests/integration` and `tests/ui`) plus
 local run is its only pre-merge check. If the branch touches `docs/` or
 public docstrings, also run the strict docs build. If the branch refactors
 simulation code without meaning to change results, also run
-`uv run --frozen -m pytest tests/parity` against a baseline refreshed on `main`.
+`uv run --frozen -m pytest tests/parity` against a baseline generated from `main`'s code.
 
 **Before finishing a task that does not end in a PR:** run the pre-PR checks.
