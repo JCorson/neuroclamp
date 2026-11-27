@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import math
 import pickle
+from collections.abc import Callable
 
 import numpy as np
 import pytest
@@ -369,3 +370,28 @@ def test_exp_linear_shares_the_channel_singularity_threshold() -> None:
 
     assert ExpLinear(0.1, -40.0, 10.0).tol == SINGULARITY_THRESHOLD
     assert TRAUB_THRESHOLD is SINGULARITY_THRESHOLD
+
+
+@pytest.mark.parametrize("form", [Exp, Sigmoid, ExpLinear, Sech])
+def test_leaf_forms_reject_a_zero_voltage_scale(
+    form: Callable[[float, float, float], Expr],
+) -> None:
+    """A zero ``s`` fails when the expression is built, not mid-simulation.
+
+    Args:
+        form: The leaf class under test.
+    """
+    with pytest.raises(ValueError, match="nonzero"):
+        form(1.0, -40.0, 0.0)
+
+
+@pytest.mark.parametrize(("kd", "n"), [(0.0, 4), (-1e-3, 4), (5e-4, 0)])
+def test_hill_rejects_non_positive_parameters(kd: float, n: int) -> None:
+    """``Hill`` requires a positive half-activation constant and coefficient.
+
+    Args:
+        kd: Half-activation concentration in mM.
+        n: Hill coefficient.
+    """
+    with pytest.raises(ValueError, match="positive"):
+        Hill(kd, n)

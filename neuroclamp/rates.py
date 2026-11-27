@@ -359,6 +359,19 @@ def _as_expr(value: "Rate | float") -> Rate:
     return rate
 
 
+def _check_scale(s: float) -> None:
+    """Reject a zero voltage scale for a leaf form.
+
+    Args:
+        s: Voltage scale in mV.
+
+    Raises:
+        ValueError: If ``s`` is zero.
+    """
+    if s == 0.0:
+        raise ValueError("voltage scale s must be nonzero")
+
+
 @dataclass(frozen=True)
 class Const(Expr):
     """A constant value.
@@ -397,6 +410,14 @@ class Exp(Expr):
     vh: float
     s: float
 
+    def __post_init__(self) -> None:
+        """Reject a zero voltage scale, which would divide by zero.
+
+        Raises:
+            ValueError: If ``s`` is zero.
+        """
+        _check_scale(self.s)
+
     def __call__(self, V: float, ca_i: float) -> float:
         """Evaluate the exponential (argument clipped by ``safe_exp``).
 
@@ -426,6 +447,14 @@ class Sigmoid(Expr):
     k: float
     vh: float
     s: float
+
+    def __post_init__(self) -> None:
+        """Reject a zero voltage scale, which would divide by zero.
+
+        Raises:
+            ValueError: If ``s`` is zero.
+        """
+        _check_scale(self.s)
 
     def __call__(self, V: float, ca_i: float) -> float:
         """Evaluate the sigmoid (argument clipped by ``safe_exp``).
@@ -463,6 +492,14 @@ class ExpLinear(Expr):
     s: float
     tol: float = SINGULARITY_THRESHOLD
 
+    def __post_init__(self) -> None:
+        """Reject a zero voltage scale, which would divide by zero.
+
+        Raises:
+            ValueError: If ``s`` is zero.
+        """
+        _check_scale(self.s)
+
     def __call__(self, V: float, ca_i: float) -> float:
         """Evaluate the exp-linear form.
 
@@ -495,6 +532,14 @@ class Sech(Expr):
     vh: float
     s: float
 
+    def __post_init__(self) -> None:
+        """Reject a zero voltage scale, which would divide by zero.
+
+        Raises:
+            ValueError: If ``s`` is zero.
+        """
+        _check_scale(self.s)
+
     def __call__(self, V: float, ca_i: float) -> float:
         """Evaluate the secant (argument clipped by ``safe_cosh``).
 
@@ -522,6 +567,17 @@ class Hill(Expr):
 
     kd: float
     n: int
+
+    def __post_init__(self) -> None:
+        """Reject parameters that make the Hill function undefined.
+
+        Raises:
+            ValueError: If ``kd`` or ``n`` is not positive.
+        """
+        if not self.kd > 0.0:
+            raise ValueError(f"Hill kd must be positive, got {self.kd}")
+        if not self.n > 0:
+            raise ValueError(f"Hill coefficient n must be positive, got {self.n}")
 
     @property
     def uses_calcium(self) -> bool:
