@@ -21,6 +21,14 @@ h = GatingVariable("h", power=1, alpha=h_alpha, beta=h_beta)
 ```
 
 Kinetics that no expression form covers can wrap a plain function with
-`VoltageOnlyFn` or `CalciumDependentFn`.
+`VoltageOnlyFn` or `CalciumDependentFn`, which can also appear inside an
+expression.
+
+The first call to an expression compiles the whole tree into one Python
+function, so expressions run as fast as hand-written rate functions.
+(A very deep tree is split into several compiled functions that call each
+other.) `Expr.evaluate()` computes a node directly from its definition and is
+the only method a custom `Expr` subclass, or a subclass of a built-in form,
+needs to override.
 
 ::: neuroclamp.rates

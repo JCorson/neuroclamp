@@ -19,7 +19,10 @@ listed under **Changed** or **Removed**.
   `Sech`, `Hill` (Ca²⁺-dependent) and `Const`, combined with `+`, `-`, `*`,
   `/` and `Max`, plus `inf_tau()` to build a gate's rates from its steady
   state and time constant. Expressions can be used anywhere a rate function
-  can, compare by value, and pickle for `simulate_batch`.
+  can, compare by value, and pickle for `simulate_batch`. Each expression
+  compiles to a single Python function on first use, so it runs as fast as a
+  hand-written rate function. A custom `Expr` subclass only needs to define
+  `evaluate()`.
 - `Rate.uses_calcium` reports whether a rate depends on intracellular Ca²⁺.
   Expressions derive it automatically; a custom `Rate` subclass that does not
   declare it is treated as Ca²⁺-dependent.
