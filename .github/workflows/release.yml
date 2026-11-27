@@ -143,16 +143,20 @@ jobs:
           # Pick the one wheel built for this OS and architecture.
           wheel="$(uv run --no-project --python "$venv" python -I - <<'EOF'
           import glob
-          import sysconfig
+          import platform
+          import sys
 
-          platform = sysconfig.get_platform()  # e.g. linux-x86_64, win-amd64
-          system, arch = platform.split("-")[0], platform.split("-")[-1]
-          marker = {"linux": "manylinux", "macosx": "macosx", "win": "win"}[system]
+          # The machine's architecture, not sysconfig.get_platform(): a
+          # universal2 Python on macOS reports "universal2" there.
+          arch = platform.machine().lower()  # x86_64, aarch64, arm64, amd64
+          marker = {"linux": "manylinux", "darwin": "macosx", "win32": "win"}[
+              sys.platform
+          ]
           wheels = [
               w for w in glob.glob("dist/*.whl")
               if marker in w and w.endswith(f"_{arch}.whl")
           ]
-          assert len(wheels) == 1, (platform, glob.glob("dist/*.whl"))
+          assert len(wheels) == 1, (sys.platform, arch, glob.glob("dist/*.whl"))
           print(wheels[0])
           EOF
           )"
