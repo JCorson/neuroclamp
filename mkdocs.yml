@@ -21,6 +21,7 @@ nav:
       - Analysis: api/analysis.md
       - Presets: api/presets.md
       - Channels: api/channels.md
+      - Rates: api/rates.md
 
 plugins:
   - search

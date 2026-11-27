@@ -11,9 +11,8 @@ matching the CORTICAL_PYRAMIDAL preset's T_ref = 307.15 K (34 °C).
 """
 
 from ..constants import DEFAULT_G_MSKV
-from ..rates import VoltageOnlyFn
+from ..rates import SINGULARITY_THRESHOLD, VoltageOnlyFn
 from ..utils import safe_exp
-from ._traub_miles import SINGULARITY_THRESHOLD
 from .base import GatingVariable, IonChannel, IonSpecies, NernstSpec
 
 __all__ = [

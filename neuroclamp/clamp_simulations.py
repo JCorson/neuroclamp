@@ -15,7 +15,6 @@ from typing import TYPE_CHECKING, cast
 import numpy as np
 
 from .constants import SIM_SAMPLING_FREQ
-from .rates import VoltageOnlyRate
 
 if TYPE_CHECKING:
     from typing import Any
@@ -220,7 +219,8 @@ def _precompute_rate_tables(
 ) -> tuple[dict[str, np.ndarray | None], dict[str, np.ndarray | None]]:
     """Precompute per-gate alpha/beta arrays over the voltage-clamp protocol.
 
-    For each gating variable whose alpha and beta are both V-only, builds
+    For each gating variable whose alpha and beta both report
+    ``uses_calcium = False`` (see :attr:`~neuroclamp.rates.Rate.uses_calcium`), builds
     arrays ``alpha[i] = phi * gv.alpha(V[i])`` and ``beta[i] = phi * gv.beta(V[i])``
     — with ``phi = neuron.q10_factor`` folded in so the hot loop needs no extra
     multiplication.  Gating variables with any Ca²⁺-dependent rate store
@@ -239,9 +239,7 @@ def _precompute_rate_tables(
     alpha_tables: dict[str, np.ndarray | None] = {}
     beta_tables: dict[str, np.ndarray | None] = {}
     for gv in neuron.all_gating_variables:
-        if isinstance(gv.alpha, VoltageOnlyRate) and isinstance(
-            gv.beta, VoltageOnlyRate
-        ):
+        if not gv.alpha.uses_calcium and not gv.beta.uses_calcium:
             alpha_fn = gv.alpha
             beta_fn = gv.beta
             alpha_vec = np.vectorize(
