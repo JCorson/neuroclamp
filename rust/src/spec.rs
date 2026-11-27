@@ -49,9 +49,9 @@ impl Kinetics {
 pub struct GateSpec {
     pub name: String,
     pub kinetics: Kinetics,
-    /// Whether either rate reads Ca²⁺. The current-clamp integrator
-    /// evaluates every rate every sub-step, so it does not need this.
-    #[allow(dead_code)]
+    /// Whether either rate reads Ca²⁺. The voltage-clamp integrator
+    /// evaluates the other gates' rates once per step, since V is fixed
+    /// across its RK4 stages; current clamp evaluates every rate every stage.
     pub uses_calcium: bool,
 }
 

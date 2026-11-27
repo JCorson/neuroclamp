@@ -1,4 +1,4 @@
-//! Fixed-step RK4 current-clamp integrator.
+//! The compiled model and its fixed-step RK4 current-clamp integrator.
 //!
 //! A port of `_simulate_current_clamp_core` and `_rk4_step_current_clamp` in
 //! `neuroclamp/clamp_simulations.py`. The order of floating-point operations
@@ -32,20 +32,20 @@ pub struct Trace {
 /// A validated model ready to simulate.
 #[derive(Debug, Clone)]
 pub struct Model {
-    spec: ModelSpec,
+    pub(crate) spec: ModelSpec,
     /// Whether any channel carries Ca²⁺, so E_Ca must be evaluated.
-    has_ca_channels: bool,
+    pub(crate) has_ca_channels: bool,
 }
 
 /// Python's `max(lo, min(hi, x))`, NaN-compatible with the Python backend.
-fn py_clamp(x: f64, lo: f64, hi: f64) -> f64 {
+pub(crate) fn py_clamp(x: f64, lo: f64, hi: f64) -> f64 {
     let upper = if x < hi { x } else { hi }; // min(hi, x)
     if upper > lo { upper } else { lo } // max(lo, ·)
 }
 
 /// Python's built-in `sum()` of floats, which CPython (3.12+) computes with
 /// Neumaier compensated summation; used for the recorded `Itotal` column.
-fn py_sum(values: &[f64]) -> f64 {
+pub(crate) fn py_sum(values: &[f64]) -> f64 {
     let mut total = 0.0;
     let mut compensation = 0.0;
     for &x in values {
@@ -86,7 +86,7 @@ impl Model {
     }
 
     /// Live Ca²⁺ Nernst potential in mV, as in `IonChannel.compute_current`.
-    fn e_ca(&self, ca: f64) -> f64 {
+    pub(crate) fn e_ca(&self, ca: f64) -> f64 {
         // Validation guarantees the Nernst constants exist whenever a channel
         // carries Ca²⁺, so this branch is unreachable for valid specs.
         let Some(c) = &self.spec.calcium_nernst else {
@@ -100,7 +100,13 @@ impl Model {
     ///
     /// `e_ca` is the live Ca²⁺ reversal potential, computed once per
     /// evaluation by the caller and used only by Ca²⁺-carrying channels.
-    fn channel_current(&self, ch: &ChannelSpec, v: f64, gates: &[f64], e_ca: f64) -> f64 {
+    pub(crate) fn channel_current(
+        &self,
+        ch: &ChannelSpec,
+        v: f64,
+        gates: &[f64],
+        e_ca: f64,
+    ) -> f64 {
         let mut g = ch.g_max;
         for &(idx, power) in &ch.gates {
             g *= int_pow(gates[idx], power);
@@ -158,7 +164,7 @@ impl Model {
     }
 
     /// Write one output row from a state and its already-computed currents.
-    fn record(&self, row: &mut [f64], v: f64, gates: &[f64], ca: f64, currents: &[f64]) {
+    pub(crate) fn record(&self, row: &mut [f64], v: f64, gates: &[f64], ca: f64, currents: &[f64]) {
         let n_ch = currents.len();
         row[0] = v;
         row[1..1 + n_ch].copy_from_slice(currents);
