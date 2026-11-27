@@ -275,3 +275,13 @@ def test_inf_tau_reproduces_the_sk_calcium_gate() -> None:
     for ca in [0.0, 5e-5, 1e-4, 3e-4, 1e-3, 1e-2]:
         assert expression[0](-60.0, ca) == pytest.approx(_alpha_qSK(-60.0, ca))
         assert expression[1](-60.0, ca) == pytest.approx(_beta_qSK(-60.0, ca))
+
+
+def test_exp_linear_with_negated_k_and_s_gives_the_mirrored_form() -> None:
+    """``ExpLinear(-k, vh, -s)`` equals ``k·x / (exp(x/s) − 1)`` and is positive."""
+    rate = ExpLinear(-0.28, 40.0, -5.0)
+    for V in (-80.0, 0.0, 40.0 + 1e-3, 60.0):
+        x = V - 40.0
+        assert rate(V, 0.0) == pytest.approx(0.28 * x / (math.exp(x / 5.0) - 1.0))
+        assert rate(V, 0.0) > 0.0
+    assert rate(40.0, 0.0) == pytest.approx(0.28 * 5.0)

@@ -380,8 +380,10 @@ class ExpLinear(Expr):
 
     The classic Hodgkin-Huxley activation rate.  It has a removable
     singularity at ``V = vh``, where its analytic limit ``k · s`` is returned
-    when ``|V − vh| < tol``.  For ``s < 0`` the curve is mirrored, which
-    expresses rates written as ``k · x / (exp(x / s) − 1)``.
+    when ``|V − vh| < tol``.  A rate written as
+    ``k′ · (V − vh) / (exp((V − vh) / s′) − 1)`` is ``ExpLinear(-k′, vh, -s′)``:
+    negating ``s`` alone flips the sign of the whole rate, so ``k`` must be
+    negated with it.
 
     Attributes:
         k: Slope of the linear asymptote in 1/(ms·mV).
