@@ -35,3 +35,7 @@ scratch/
 
 # mkdocs build output
 site/
+
+# Compiled Rust extension placed in the package by editable installs
+/neuroclamp/_core.*.so
+/neuroclamp/_core.*.pyd

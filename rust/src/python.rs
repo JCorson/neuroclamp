@@ -19,7 +19,7 @@ use pyo3::prelude::*;
 use crate::current_clamp::Model;
 
 /// A compiled neuroclamp model, built once from a lowered JSON spec.
-#[pyclass(name = "Model", frozen)]
+#[pyclass(name = "Model", module = "neuroclamp._core", frozen)]
 pub struct PyModel {
     inner: Model,
 }

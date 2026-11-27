@@ -5,8 +5,9 @@ Usage::
     uv build
     uv run --no-project python tools/check_dist.py dist
 
-The checks guard what an installed ``neuroclamp`` needs at runtime (help pages,
-JS templates, screenshots) and what must stay out of it (a top-level
+The checks guard what an installed ``neuroclamp`` needs at runtime (the
+compiled Rust core, help pages, JS templates, screenshots), the Rust sources
+the sdist needs to rebuild that core, and what must stay out of both (a top-level
 ``rxconfig`` module, tests, build caches). The script uses only the standard
 library, so it runs without the project environment. It exits non-zero and
 lists every failure if any check fails.
@@ -25,11 +26,20 @@ WHEEL_REQUIRED: dict[str, int] = {
     "neuroclamp/__init__.py": 1,
     "neuroclamp/py.typed": 1,
     "neuroclamp/presets/*.py": 1,
+    # The compiled Rust core (.so on Linux and macOS, .pyd on Windows).
+    "neuroclamp/_core.*": 1,
     "neuroclamp_ui/__init__.py": 1,
     "neuroclamp_ui/help_content/*.md": 5,
     "neuroclamp_ui/js/*.js": 2,
     "neuroclamp_ui/help_content/screenshots/*.png": 7,
 }
+
+#: Rust sources the sdist needs so the extension can be built from it.
+SDIST_RUST_SOURCES: tuple[str, ...] = (
+    "rust/Cargo.toml",
+    "rust/Cargo.lock",
+    "rust/src/lib.rs",
+)
 
 #: Top-level names that must not appear in either artifact.
 FORBIDDEN_TOP_LEVEL: tuple[str, ...] = (
@@ -141,6 +151,9 @@ def check_sdist(sdist: Path) -> list[str]:
         path.match("neuroclamp_ui/help_content/screenshots/*.png") for path in relative
     ):
         failures.append("sdist: missing the help-page screenshots")
+    for required in SDIST_RUST_SOURCES:
+        if Path(required) not in relative:
+            failures.append(f"sdist: missing the Rust source {required}")
     return failures
 
 
