@@ -1,0 +1,1040 @@
+{
+  "neuroclamp_version": "0.1.0",
+  "stride": 40,
+  "atol": {
+    "voltage": 1e-05,
+    "Itotal": 1e-05,
+    "ca_i": 1e-10
+  },
+  "rtol": 1e-09,
+  "time_tol_ms": 0.0001,
+  "slope_half_window": 2,
+  "runs": [
+    {
+      "neuron": "Squid Giant Axon (Classic HH)",
+      "protocol": "Action Potential",
+      "sweep": 0,
+      "clamp_mode": "Current Clamp"
+    },
+    {
+      "neuron": "Squid Giant Axon (Classic HH)",
+      "protocol": "Subthreshold Response",
+      "sweep": 0,
+      "clamp_mode": "Current Clamp"
+    },
+    {
+      "neuron": "Squid Giant Axon (Classic HH)",
+      "protocol": "Repetitive Firing",
+      "sweep": 0,
+      "clamp_mode": "Current Clamp"
+    },
+    {
+      "neuron": "Squid Giant Axon (Classic HH)",
+      "protocol": "F-I Curve",
+      "sweep": 0,
+      "clamp_mode": "Current Clamp"
+    },
+    {
+      "neuron": "Squid Giant Axon (Classic HH)",
+      "protocol": "F-I Curve",
+      "sweep": 4,
+      "clamp_mode": "Current Clamp"
+    },
+    {
+      "neuron": "Squid Giant Axon (Classic HH)",
+      "protocol": "F-I Curve",
+      "sweep": 8,
+      "clamp_mode": "Current Clamp"
+    },
+    {
+      "neuron": "Squid Giant Axon (Classic HH)",
+      "protocol": "Hyperpolarization Steps",
+      "sweep": 0,
+      "clamp_mode": "Current Clamp"
+    },
+    {
+      "neuron": "Squid Giant Axon (Classic HH)",
+      "protocol": "Hyperpolarization Steps",
+      "sweep": 2,
+      "clamp_mode": "Current Clamp"
+    },
+    {
+      "neuron": "Squid Giant Axon (Classic HH)",
+      "protocol": "Hyperpolarization Steps",
+      "sweep": 4,
+      "clamp_mode": "Current Clamp"
+    },
+    {
+      "neuron": "Squid Giant Axon (Classic HH)",
+      "protocol": "I-V Curve",
+      "sweep": 0,
+      "clamp_mode": "Voltage Clamp"
+    },
+    {
+      "neuron": "Squid Giant Axon (Classic HH)",
+      "protocol": "I-V Curve",
+      "sweep": 8,
+      "clamp_mode": "Voltage Clamp"
+    },
+    {
+      "neuron": "Squid Giant Axon (Classic HH)",
+      "protocol": "I-V Curve",
+      "sweep": 16,
+      "clamp_mode": "Voltage Clamp"
+    },
+    {
+      "neuron": "Squid Giant Axon (Classic HH)",
+      "protocol": "Na+ Channel Activation",
+      "sweep": 0,
+      "clamp_mode": "Voltage Clamp"
+    },
+    {
+      "neuron": "Squid Giant Axon (Classic HH)",
+      "protocol": "Na+ Channel Activation",
+      "sweep": 6,
+      "clamp_mode": "Voltage Clamp"
+    },
+    {
+      "neuron": "Squid Giant Axon (Classic HH)",
+      "protocol": "Na+ Channel Activation",
+      "sweep": 12,
+      "clamp_mode": "Voltage Clamp"
+    },
+    {
+      "neuron": "Squid Giant Axon (Classic HH)",
+      "protocol": "Steady-State Inactivation",
+      "sweep": 0,
+      "clamp_mode": "Voltage Clamp"
+    },
+    {
+      "neuron": "Squid Giant Axon (Classic HH)",
+      "protocol": "Steady-State Inactivation",
+      "sweep": 5,
+      "clamp_mode": "Voltage Clamp"
+    },
+    {
+      "neuron": "Squid Giant Axon (Classic HH)",
+      "protocol": "Steady-State Inactivation",
+      "sweep": 10,
+      "clamp_mode": "Voltage Clamp"
+    },
+    {
+      "neuron": "Squid Giant Axon (Classic HH)",
+      "protocol": "Frequency Response",
+      "sweep": 0,
+      "clamp_mode": "Current Clamp"
+    },
+    {
+      "neuron": "Fast-Spiking Interneuron",
+      "protocol": "Action Potential",
+      "sweep": 0,
+      "clamp_mode": "Current Clamp"
+    },
+    {
+      "neuron": "Fast-Spiking Interneuron",
+      "protocol": "Subthreshold Response",
+      "sweep": 0,
+      "clamp_mode": "Current Clamp"
+    },
+    {
+      "neuron": "Fast-Spiking Interneuron",
+      "protocol": "Repetitive Firing",
+      "sweep": 0,
+      "clamp_mode": "Current Clamp"
+    },
+    {
+      "neuron": "Fast-Spiking Interneuron",
+      "protocol": "F-I Curve",
+      "sweep": 0,
+      "clamp_mode": "Current Clamp"
+    },
+    {
+      "neuron": "Fast-Spiking Interneuron",
+      "protocol": "F-I Curve",
+      "sweep": 4,
+      "clamp_mode": "Current Clamp"
+    },
+    {
+      "neuron": "Fast-Spiking Interneuron",
+      "protocol": "F-I Curve",
+      "sweep": 8,
+      "clamp_mode": "Current Clamp"
+    },
+    {
+      "neuron": "Fast-Spiking Interneuron",
+      "protocol": "Hyperpolarization Steps",
+      "sweep": 0,
+      "clamp_mode": "Current Clamp"
+    },
+    {
+      "neuron": "Fast-Spiking Interneuron",
+      "protocol": "Hyperpolarization Steps",
+      "sweep": 2,
+      "clamp_mode": "Current Clamp"
+    },
+    {
+      "neuron": "Fast-Spiking Interneuron",
+      "protocol": "Hyperpolarization Steps",
+      "sweep": 3,
+      "clamp_mode": "Current Clamp"
+    },
+    {
+      "neuron": "Fast-Spiking Interneuron",
+      "protocol": "I-V Curve",
+      "sweep": 0,
+      "clamp_mode": "Voltage Clamp"
+    },
+    {
+      "neuron": "Fast-Spiking Interneuron",
+      "protocol": "I-V Curve",
+      "sweep": 8,
+      "clamp_mode": "Voltage Clamp"
+    },
+    {
+      "neuron": "Fast-Spiking Interneuron",
+      "protocol": "I-V Curve",
+      "sweep": 16,
+      "clamp_mode": "Voltage Clamp"
+    },
+    {
+      "neuron": "Fast-Spiking Interneuron",
+      "protocol": "Na+ Channel Activation",
+      "sweep": 0,
+      "clamp_mode": "Voltage Clamp"
+    },
+    {
+      "neuron": "Fast-Spiking Interneuron",
+      "protocol": "Na+ Channel Activation",
+      "sweep": 6,
+      "clamp_mode": "Voltage Clamp"
+    },
+    {
+      "neuron": "Fast-Spiking Interneuron",
+      "protocol": "Na+ Channel Activation",
+      "sweep": 12,
+      "clamp_mode": "Voltage Clamp"
+    },
+    {
+      "neuron": "Fast-Spiking Interneuron",
+      "protocol": "Steady-State Inactivation",
+      "sweep": 0,
+      "clamp_mode": "Voltage Clamp"
+    },
+    {
+      "neuron": "Fast-Spiking Interneuron",
+      "protocol": "Steady-State Inactivation",
+      "sweep": 5,
+      "clamp_mode": "Voltage Clamp"
+    },
+    {
+      "neuron": "Fast-Spiking Interneuron",
+      "protocol": "Steady-State Inactivation",
+      "sweep": 10,
+      "clamp_mode": "Voltage Clamp"
+    },
+    {
+      "neuron": "Fast-Spiking Interneuron",
+      "protocol": "Frequency Response",
+      "sweep": 0,
+      "clamp_mode": "Current Clamp"
+    },
+    {
+      "neuron": "Cortical Pyramidal Neuron",
+      "protocol": "Action Potential",
+      "sweep": 0,
+      "clamp_mode": "Current Clamp"
+    },
+    {
+      "neuron": "Cortical Pyramidal Neuron",
+      "protocol": "Subthreshold Response",
+      "sweep": 0,
+      "clamp_mode": "Current Clamp"
+    },
+    {
+      "neuron": "Cortical Pyramidal Neuron",
+      "protocol": "Repetitive Firing",
+      "sweep": 0,
+      "clamp_mode": "Current Clamp"
+    },
+    {
+      "neuron": "Cortical Pyramidal Neuron",
+      "protocol": "F-I Curve",
+      "sweep": 0,
+      "clamp_mode": "Current Clamp"
+    },
+    {
+      "neuron": "Cortical Pyramidal Neuron",
+      "protocol": "F-I Curve",
+      "sweep": 4,
+      "clamp_mode": "Current Clamp"
+    },
+    {
+      "neuron": "Cortical Pyramidal Neuron",
+      "protocol": "F-I Curve",
+      "sweep": 8,
+      "clamp_mode": "Current Clamp"
+    },
+    {
+      "neuron": "Cortical Pyramidal Neuron",
+      "protocol": "Hyperpolarization Steps",
+      "sweep": 0,
+      "clamp_mode": "Current Clamp"
+    },
+    {
+      "neuron": "Cortical Pyramidal Neuron",
+      "protocol": "Hyperpolarization Steps",
+      "sweep": 2,
+      "clamp_mode": "Current Clamp"
+    },
+    {
+      "neuron": "Cortical Pyramidal Neuron",
+      "protocol": "Hyperpolarization Steps",
+      "sweep": 4,
+      "clamp_mode": "Current Clamp"
+    },
+    {
+      "neuron": "Cortical Pyramidal Neuron",
+      "protocol": "I-V Curve",
+      "sweep": 0,
+      "clamp_mode": "Voltage Clamp"
+    },
+    {
+      "neuron": "Cortical Pyramidal Neuron",
+      "protocol": "I-V Curve",
+      "sweep": 8,
+      "clamp_mode": "Voltage Clamp"
+    },
+    {
+      "neuron": "Cortical Pyramidal Neuron",
+      "protocol": "I-V Curve",
+      "sweep": 16,
+      "clamp_mode": "Voltage Clamp"
+    },
+    {
+      "neuron": "Cortical Pyramidal Neuron",
+      "protocol": "Na+ Channel Activation",
+      "sweep": 0,
+      "clamp_mode": "Voltage Clamp"
+    },
+    {
+      "neuron": "Cortical Pyramidal Neuron",
+      "protocol": "Na+ Channel Activation",
+      "sweep": 6,
+      "clamp_mode": "Voltage Clamp"
+    },
+    {
+      "neuron": "Cortical Pyramidal Neuron",
+      "protocol": "Na+ Channel Activation",
+      "sweep": 12,
+      "clamp_mode": "Voltage Clamp"
+    },
+    {
+      "neuron": "Cortical Pyramidal Neuron",
+      "protocol": "Steady-State Inactivation",
+      "sweep": 0,
+      "clamp_mode": "Voltage Clamp"
+    },
+    {
+      "neuron": "Cortical Pyramidal Neuron",
+      "protocol": "Steady-State Inactivation",
+      "sweep": 5,
+      "clamp_mode": "Voltage Clamp"
+    },
+    {
+      "neuron": "Cortical Pyramidal Neuron",
+      "protocol": "Steady-State Inactivation",
+      "sweep": 10,
+      "clamp_mode": "Voltage Clamp"
+    },
+    {
+      "neuron": "Cortical Pyramidal Neuron",
+      "protocol": "Frequency Response",
+      "sweep": 0,
+      "clamp_mode": "Current Clamp"
+    },
+    {
+      "neuron": "Purkinje Neuron",
+      "protocol": "Action Potential",
+      "sweep": 0,
+      "clamp_mode": "Current Clamp"
+    },
+    {
+      "neuron": "Purkinje Neuron",
+      "protocol": "Subthreshold Response",
+      "sweep": 0,
+      "clamp_mode": "Current Clamp"
+    },
+    {
+      "neuron": "Purkinje Neuron",
+      "protocol": "Repetitive Firing",
+      "sweep": 0,
+      "clamp_mode": "Current Clamp"
+    },
+    {
+      "neuron": "Purkinje Neuron",
+      "protocol": "F-I Curve",
+      "sweep": 0,
+      "clamp_mode": "Current Clamp"
+    },
+    {
+      "neuron": "Purkinje Neuron",
+      "protocol": "F-I Curve",
+      "sweep": 4,
+      "clamp_mode": "Current Clamp"
+    },
+    {
+      "neuron": "Purkinje Neuron",
+      "protocol": "F-I Curve",
+      "sweep": 8,
+      "clamp_mode": "Current Clamp"
+    },
+    {
+      "neuron": "Purkinje Neuron",
+      "protocol": "Hyperpolarization Steps",
+      "sweep": 0,
+      "clamp_mode": "Current Clamp"
+    },
+    {
+      "neuron": "Purkinje Neuron",
+      "protocol": "Hyperpolarization Steps",
+      "sweep": 1,
+      "clamp_mode": "Current Clamp"
+    },
+    {
+      "neuron": "Purkinje Neuron",
+      "protocol": "Hyperpolarization Steps",
+      "sweep": 2,
+      "clamp_mode": "Current Clamp"
+    },
+    {
+      "neuron": "Purkinje Neuron",
+      "protocol": "I-V Curve",
+      "sweep": 0,
+      "clamp_mode": "Voltage Clamp"
+    },
+    {
+      "neuron": "Purkinje Neuron",
+      "protocol": "I-V Curve",
+      "sweep": 8,
+      "clamp_mode": "Voltage Clamp"
+    },
+    {
+      "neuron": "Purkinje Neuron",
+      "protocol": "I-V Curve",
+      "sweep": 16,
+      "clamp_mode": "Voltage Clamp"
+    },
+    {
+      "neuron": "Purkinje Neuron",
+      "protocol": "Na+ Channel Activation",
+      "sweep": 0,
+      "clamp_mode": "Voltage Clamp"
+    },
+    {
+      "neuron": "Purkinje Neuron",
+      "protocol": "Na+ Channel Activation",
+      "sweep": 6,
+      "clamp_mode": "Voltage Clamp"
+    },
+    {
+      "neuron": "Purkinje Neuron",
+      "protocol": "Na+ Channel Activation",
+      "sweep": 12,
+      "clamp_mode": "Voltage Clamp"
+    },
+    {
+      "neuron": "Purkinje Neuron",
+      "protocol": "Steady-State Inactivation",
+      "sweep": 0,
+      "clamp_mode": "Voltage Clamp"
+    },
+    {
+      "neuron": "Purkinje Neuron",
+      "protocol": "Steady-State Inactivation",
+      "sweep": 5,
+      "clamp_mode": "Voltage Clamp"
+    },
+    {
+      "neuron": "Purkinje Neuron",
+      "protocol": "Steady-State Inactivation",
+      "sweep": 10,
+      "clamp_mode": "Voltage Clamp"
+    },
+    {
+      "neuron": "Purkinje Neuron",
+      "protocol": "Frequency Response",
+      "sweep": 0,
+      "clamp_mode": "Current Clamp"
+    },
+    {
+      "neuron": "SNc Dopaminergic Neuron",
+      "protocol": "Action Potential",
+      "sweep": 0,
+      "clamp_mode": "Current Clamp"
+    },
+    {
+      "neuron": "SNc Dopaminergic Neuron",
+      "protocol": "Subthreshold Response",
+      "sweep": 0,
+      "clamp_mode": "Current Clamp"
+    },
+    {
+      "neuron": "SNc Dopaminergic Neuron",
+      "protocol": "Repetitive Firing",
+      "sweep": 0,
+      "clamp_mode": "Current Clamp"
+    },
+    {
+      "neuron": "SNc Dopaminergic Neuron",
+      "protocol": "F-I Curve",
+      "sweep": 0,
+      "clamp_mode": "Current Clamp"
+    },
+    {
+      "neuron": "SNc Dopaminergic Neuron",
+      "protocol": "F-I Curve",
+      "sweep": 4,
+      "clamp_mode": "Current Clamp"
+    },
+    {
+      "neuron": "SNc Dopaminergic Neuron",
+      "protocol": "F-I Curve",
+      "sweep": 8,
+      "clamp_mode": "Current Clamp"
+    },
+    {
+      "neuron": "SNc Dopaminergic Neuron",
+      "protocol": "Hyperpolarization Steps",
+      "sweep": 0,
+      "clamp_mode": "Current Clamp"
+    },
+    {
+      "neuron": "SNc Dopaminergic Neuron",
+      "protocol": "Hyperpolarization Steps",
+      "sweep": 2,
+      "clamp_mode": "Current Clamp"
+    },
+    {
+      "neuron": "SNc Dopaminergic Neuron",
+      "protocol": "Hyperpolarization Steps",
+      "sweep": 3,
+      "clamp_mode": "Current Clamp"
+    },
+    {
+      "neuron": "SNc Dopaminergic Neuron",
+      "protocol": "I-V Curve",
+      "sweep": 0,
+      "clamp_mode": "Voltage Clamp"
+    },
+    {
+      "neuron": "SNc Dopaminergic Neuron",
+      "protocol": "I-V Curve",
+      "sweep": 8,
+      "clamp_mode": "Voltage Clamp"
+    },
+    {
+      "neuron": "SNc Dopaminergic Neuron",
+      "protocol": "I-V Curve",
+      "sweep": 16,
+      "clamp_mode": "Voltage Clamp"
+    },
+    {
+      "neuron": "SNc Dopaminergic Neuron",
+      "protocol": "Na+ Channel Activation",
+      "sweep": 0,
+      "clamp_mode": "Voltage Clamp"
+    },
+    {
+      "neuron": "SNc Dopaminergic Neuron",
+      "protocol": "Na+ Channel Activation",
+      "sweep": 6,
+      "clamp_mode": "Voltage Clamp"
+    },
+    {
+      "neuron": "SNc Dopaminergic Neuron",
+      "protocol": "Na+ Channel Activation",
+      "sweep": 12,
+      "clamp_mode": "Voltage Clamp"
+    },
+    {
+      "neuron": "SNc Dopaminergic Neuron",
+      "protocol": "Steady-State Inactivation",
+      "sweep": 0,
+      "clamp_mode": "Voltage Clamp"
+    },
+    {
+      "neuron": "SNc Dopaminergic Neuron",
+      "protocol": "Steady-State Inactivation",
+      "sweep": 5,
+      "clamp_mode": "Voltage Clamp"
+    },
+    {
+      "neuron": "SNc Dopaminergic Neuron",
+      "protocol": "Steady-State Inactivation",
+      "sweep": 10,
+      "clamp_mode": "Voltage Clamp"
+    },
+    {
+      "neuron": "SNc Dopaminergic Neuron",
+      "protocol": "Frequency Response",
+      "sweep": 0,
+      "clamp_mode": "Current Clamp"
+    },
+    {
+      "neuron": "Thalamic Relay Neuron",
+      "protocol": "Action Potential",
+      "sweep": 0,
+      "clamp_mode": "Current Clamp"
+    },
+    {
+      "neuron": "Thalamic Relay Neuron",
+      "protocol": "Subthreshold Response",
+      "sweep": 0,
+      "clamp_mode": "Current Clamp"
+    },
+    {
+      "neuron": "Thalamic Relay Neuron",
+      "protocol": "Repetitive Firing",
+      "sweep": 0,
+      "clamp_mode": "Current Clamp"
+    },
+    {
+      "neuron": "Thalamic Relay Neuron",
+      "protocol": "F-I Curve",
+      "sweep": 0,
+      "clamp_mode": "Current Clamp"
+    },
+    {
+      "neuron": "Thalamic Relay Neuron",
+      "protocol": "F-I Curve",
+      "sweep": 5,
+      "clamp_mode": "Current Clamp"
+    },
+    {
+      "neuron": "Thalamic Relay Neuron",
+      "protocol": "F-I Curve",
+      "sweep": 10,
+      "clamp_mode": "Current Clamp"
+    },
+    {
+      "neuron": "Thalamic Relay Neuron",
+      "protocol": "Hyperpolarization Steps",
+      "sweep": 0,
+      "clamp_mode": "Current Clamp"
+    },
+    {
+      "neuron": "Thalamic Relay Neuron",
+      "protocol": "Hyperpolarization Steps",
+      "sweep": 2,
+      "clamp_mode": "Current Clamp"
+    },
+    {
+      "neuron": "Thalamic Relay Neuron",
+      "protocol": "Hyperpolarization Steps",
+      "sweep": 4,
+      "clamp_mode": "Current Clamp"
+    },
+    {
+      "neuron": "Thalamic Relay Neuron",
+      "protocol": "I-V Curve",
+      "sweep": 0,
+      "clamp_mode": "Voltage Clamp"
+    },
+    {
+      "neuron": "Thalamic Relay Neuron",
+      "protocol": "I-V Curve",
+      "sweep": 8,
+      "clamp_mode": "Voltage Clamp"
+    },
+    {
+      "neuron": "Thalamic Relay Neuron",
+      "protocol": "I-V Curve",
+      "sweep": 16,
+      "clamp_mode": "Voltage Clamp"
+    },
+    {
+      "neuron": "Thalamic Relay Neuron",
+      "protocol": "Na+ Channel Activation",
+      "sweep": 0,
+      "clamp_mode": "Voltage Clamp"
+    },
+    {
+      "neuron": "Thalamic Relay Neuron",
+      "protocol": "Na+ Channel Activation",
+      "sweep": 6,
+      "clamp_mode": "Voltage Clamp"
+    },
+    {
+      "neuron": "Thalamic Relay Neuron",
+      "protocol": "Na+ Channel Activation",
+      "sweep": 12,
+      "clamp_mode": "Voltage Clamp"
+    },
+    {
+      "neuron": "Thalamic Relay Neuron",
+      "protocol": "Steady-State Inactivation",
+      "sweep": 0,
+      "clamp_mode": "Voltage Clamp"
+    },
+    {
+      "neuron": "Thalamic Relay Neuron",
+      "protocol": "Steady-State Inactivation",
+      "sweep": 5,
+      "clamp_mode": "Voltage Clamp"
+    },
+    {
+      "neuron": "Thalamic Relay Neuron",
+      "protocol": "Steady-State Inactivation",
+      "sweep": 10,
+      "clamp_mode": "Voltage Clamp"
+    },
+    {
+      "neuron": "Thalamic Relay Neuron",
+      "protocol": "Frequency Response",
+      "sweep": 0,
+      "clamp_mode": "Current Clamp"
+    },
+    {
+      "neuron": "Hippocampal CA1 Pyramidal Neuron",
+      "protocol": "Action Potential",
+      "sweep": 0,
+      "clamp_mode": "Current Clamp"
+    },
+    {
+      "neuron": "Hippocampal CA1 Pyramidal Neuron",
+      "protocol": "Subthreshold Response",
+      "sweep": 0,
+      "clamp_mode": "Current Clamp"
+    },
+    {
+      "neuron": "Hippocampal CA1 Pyramidal Neuron",
+      "protocol": "Repetitive Firing",
+      "sweep": 0,
+      "clamp_mode": "Current Clamp"
+    },
+    {
+      "neuron": "Hippocampal CA1 Pyramidal Neuron",
+      "protocol": "F-I Curve",
+      "sweep": 0,
+      "clamp_mode": "Current Clamp"
+    },
+    {
+      "neuron": "Hippocampal CA1 Pyramidal Neuron",
+      "protocol": "F-I Curve",
+      "sweep": 5,
+      "clamp_mode": "Current Clamp"
+    },
+    {
+      "neuron": "Hippocampal CA1 Pyramidal Neuron",
+      "protocol": "F-I Curve",
+      "sweep": 10,
+      "clamp_mode": "Current Clamp"
+    },
+    {
+      "neuron": "Hippocampal CA1 Pyramidal Neuron",
+      "protocol": "Hyperpolarization Steps",
+      "sweep": 0,
+      "clamp_mode": "Current Clamp"
+    },
+    {
+      "neuron": "Hippocampal CA1 Pyramidal Neuron",
+      "protocol": "Hyperpolarization Steps",
+      "sweep": 2,
+      "clamp_mode": "Current Clamp"
+    },
+    {
+      "neuron": "Hippocampal CA1 Pyramidal Neuron",
+      "protocol": "Hyperpolarization Steps",
+      "sweep": 4,
+      "clamp_mode": "Current Clamp"
+    },
+    {
+      "neuron": "Hippocampal CA1 Pyramidal Neuron",
+      "protocol": "I-V Curve",
+      "sweep": 0,
+      "clamp_mode": "Voltage Clamp"
+    },
+    {
+      "neuron": "Hippocampal CA1 Pyramidal Neuron",
+      "protocol": "I-V Curve",
+      "sweep": 8,
+      "clamp_mode": "Voltage Clamp"
+    },
+    {
+      "neuron": "Hippocampal CA1 Pyramidal Neuron",
+      "protocol": "I-V Curve",
+      "sweep": 16,
+      "clamp_mode": "Voltage Clamp"
+    },
+    {
+      "neuron": "Hippocampal CA1 Pyramidal Neuron",
+      "protocol": "Na+ Channel Activation",
+      "sweep": 0,
+      "clamp_mode": "Voltage Clamp"
+    },
+    {
+      "neuron": "Hippocampal CA1 Pyramidal Neuron",
+      "protocol": "Na+ Channel Activation",
+      "sweep": 6,
+      "clamp_mode": "Voltage Clamp"
+    },
+    {
+      "neuron": "Hippocampal CA1 Pyramidal Neuron",
+      "protocol": "Na+ Channel Activation",
+      "sweep": 12,
+      "clamp_mode": "Voltage Clamp"
+    },
+    {
+      "neuron": "Hippocampal CA1 Pyramidal Neuron",
+      "protocol": "Steady-State Inactivation",
+      "sweep": 0,
+      "clamp_mode": "Voltage Clamp"
+    },
+    {
+      "neuron": "Hippocampal CA1 Pyramidal Neuron",
+      "protocol": "Steady-State Inactivation",
+      "sweep": 5,
+      "clamp_mode": "Voltage Clamp"
+    },
+    {
+      "neuron": "Hippocampal CA1 Pyramidal Neuron",
+      "protocol": "Steady-State Inactivation",
+      "sweep": 10,
+      "clamp_mode": "Voltage Clamp"
+    },
+    {
+      "neuron": "Hippocampal CA1 Pyramidal Neuron",
+      "protocol": "Frequency Response",
+      "sweep": 0,
+      "clamp_mode": "Current Clamp"
+    },
+    {
+      "neuron": "Subthalamic Nucleus Neuron",
+      "protocol": "Action Potential",
+      "sweep": 0,
+      "clamp_mode": "Current Clamp"
+    },
+    {
+      "neuron": "Subthalamic Nucleus Neuron",
+      "protocol": "Subthreshold Response",
+      "sweep": 0,
+      "clamp_mode": "Current Clamp"
+    },
+    {
+      "neuron": "Subthalamic Nucleus Neuron",
+      "protocol": "Repetitive Firing",
+      "sweep": 0,
+      "clamp_mode": "Current Clamp"
+    },
+    {
+      "neuron": "Subthalamic Nucleus Neuron",
+      "protocol": "F-I Curve",
+      "sweep": 0,
+      "clamp_mode": "Current Clamp"
+    },
+    {
+      "neuron": "Subthalamic Nucleus Neuron",
+      "protocol": "F-I Curve",
+      "sweep": 5,
+      "clamp_mode": "Current Clamp"
+    },
+    {
+      "neuron": "Subthalamic Nucleus Neuron",
+      "protocol": "F-I Curve",
+      "sweep": 10,
+      "clamp_mode": "Current Clamp"
+    },
+    {
+      "neuron": "Subthalamic Nucleus Neuron",
+      "protocol": "Hyperpolarization Steps",
+      "sweep": 0,
+      "clamp_mode": "Current Clamp"
+    },
+    {
+      "neuron": "Subthalamic Nucleus Neuron",
+      "protocol": "Hyperpolarization Steps",
+      "sweep": 2,
+      "clamp_mode": "Current Clamp"
+    },
+    {
+      "neuron": "Subthalamic Nucleus Neuron",
+      "protocol": "Hyperpolarization Steps",
+      "sweep": 4,
+      "clamp_mode": "Current Clamp"
+    },
+    {
+      "neuron": "Subthalamic Nucleus Neuron",
+      "protocol": "I-V Curve",
+      "sweep": 0,
+      "clamp_mode": "Voltage Clamp"
+    },
+    {
+      "neuron": "Subthalamic Nucleus Neuron",
+      "protocol": "I-V Curve",
+      "sweep": 8,
+      "clamp_mode": "Voltage Clamp"
+    },
+    {
+      "neuron": "Subthalamic Nucleus Neuron",
+      "protocol": "I-V Curve",
+      "sweep": 16,
+      "clamp_mode": "Voltage Clamp"
+    },
+    {
+      "neuron": "Subthalamic Nucleus Neuron",
+      "protocol": "Na+ Channel Activation",
+      "sweep": 0,
+      "clamp_mode": "Voltage Clamp"
+    },
+    {
+      "neuron": "Subthalamic Nucleus Neuron",
+      "protocol": "Na+ Channel Activation",
+      "sweep": 6,
+      "clamp_mode": "Voltage Clamp"
+    },
+    {
+      "neuron": "Subthalamic Nucleus Neuron",
+      "protocol": "Na+ Channel Activation",
+      "sweep": 12,
+      "clamp_mode": "Voltage Clamp"
+    },
+    {
+      "neuron": "Subthalamic Nucleus Neuron",
+      "protocol": "Steady-State Inactivation",
+      "sweep": 0,
+      "clamp_mode": "Voltage Clamp"
+    },
+    {
+      "neuron": "Subthalamic Nucleus Neuron",
+      "protocol": "Steady-State Inactivation",
+      "sweep": 5,
+      "clamp_mode": "Voltage Clamp"
+    },
+    {
+      "neuron": "Subthalamic Nucleus Neuron",
+      "protocol": "Steady-State Inactivation",
+      "sweep": 10,
+      "clamp_mode": "Voltage Clamp"
+    },
+    {
+      "neuron": "Subthalamic Nucleus Neuron",
+      "protocol": "Frequency Response",
+      "sweep": 0,
+      "clamp_mode": "Current Clamp"
+    },
+    {
+      "neuron": "Thalamic Reticular Nucleus Neuron",
+      "protocol": "Action Potential",
+      "sweep": 0,
+      "clamp_mode": "Current Clamp"
+    },
+    {
+      "neuron": "Thalamic Reticular Nucleus Neuron",
+      "protocol": "Subthreshold Response",
+      "sweep": 0,
+      "clamp_mode": "Current Clamp"
+    },
+    {
+      "neuron": "Thalamic Reticular Nucleus Neuron",
+      "protocol": "Repetitive Firing",
+      "sweep": 0,
+      "clamp_mode": "Current Clamp"
+    },
+    {
+      "neuron": "Thalamic Reticular Nucleus Neuron",
+      "protocol": "F-I Curve",
+      "sweep": 0,
+      "clamp_mode": "Current Clamp"
+    },
+    {
+      "neuron": "Thalamic Reticular Nucleus Neuron",
+      "protocol": "F-I Curve",
+      "sweep": 5,
+      "clamp_mode": "Current Clamp"
+    },
+    {
+      "neuron": "Thalamic Reticular Nucleus Neuron",
+      "protocol": "F-I Curve",
+      "sweep": 10,
+      "clamp_mode": "Current Clamp"
+    },
+    {
+      "neuron": "Thalamic Reticular Nucleus Neuron",
+      "protocol": "Hyperpolarization Steps",
+      "sweep": 0,
+      "clamp_mode": "Current Clamp"
+    },
+    {
+      "neuron": "Thalamic Reticular Nucleus Neuron",
+      "protocol": "Hyperpolarization Steps",
+      "sweep": 2,
+      "clamp_mode": "Current Clamp"
+    },
+    {
+      "neuron": "Thalamic Reticular Nucleus Neuron",
+      "protocol": "Hyperpolarization Steps",
+      "sweep": 4,
+      "clamp_mode": "Current Clamp"
+    },
+    {
+      "neuron": "Thalamic Reticular Nucleus Neuron",
+      "protocol": "I-V Curve",
+      "sweep": 0,
+      "clamp_mode": "Voltage Clamp"
+    },
+    {
+      "neuron": "Thalamic Reticular Nucleus Neuron",
+      "protocol": "I-V Curve",
+      "sweep": 8,
+      "clamp_mode": "Voltage Clamp"
+    },
+    {
+      "neuron": "Thalamic Reticular Nucleus Neuron",
+      "protocol": "I-V Curve",
+      "sweep": 16,
+      "clamp_mode": "Voltage Clamp"
+    },
+    {
+      "neuron": "Thalamic Reticular Nucleus Neuron",
+      "protocol": "Na+ Channel Activation",
+      "sweep": 0,
+      "clamp_mode": "Voltage Clamp"
+    },
+    {
+      "neuron": "Thalamic Reticular Nucleus Neuron",
+      "protocol": "Na+ Channel Activation",
+      "sweep": 6,
+      "clamp_mode": "Voltage Clamp"
+    },
+    {
+      "neuron": "Thalamic Reticular Nucleus Neuron",
+      "protocol": "Na+ Channel Activation",
+      "sweep": 12,
+      "clamp_mode": "Voltage Clamp"
+    },
+    {
+      "neuron": "Thalamic Reticular Nucleus Neuron",
+      "protocol": "Steady-State Inactivation",
+      "sweep": 0,
+      "clamp_mode": "Voltage Clamp"
+    },
+    {
+      "neuron": "Thalamic Reticular Nucleus Neuron",
+      "protocol": "Steady-State Inactivation",
+      "sweep": 5,
+      "clamp_mode": "Voltage Clamp"
+    },
+    {
+      "neuron": "Thalamic Reticular Nucleus Neuron",
+      "protocol": "Steady-State Inactivation",
+      "sweep": 10,
+      "clamp_mode": "Voltage Clamp"
+    },
+    {
+      "neuron": "Thalamic Reticular Nucleus Neuron",
+      "protocol": "Frequency Response",
+      "sweep": 0,
+      "clamp_mode": "Current Clamp"
+    }
+  ]
+}
