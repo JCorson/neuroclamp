@@ -5,8 +5,7 @@ sweep) and compares it with the baseline in ``tests/parity/golden/`` using a
 timing-aware tolerance band. See :mod:`tests.parity._golden` for coverage,
 storage, tolerance, and workflow details.
 
-Current-clamp runs are also checked on the Rust backend against the same
-baseline.
+Every run is also checked on the Rust backend against the same baseline.
 
 These tests are opt-in (outside the default ``testpaths``) because intentional
 tuning of presets is expected to change the output. Run them for refactors
@@ -25,7 +24,6 @@ import json
 
 import pytest
 
-from neuroclamp.constants import CURRENT_CLAMP
 from tests.parity._golden import (
     GOLDEN_DIR,
     GoldenRun,
@@ -42,7 +40,6 @@ _REGENERATE = (
     " tests/parity/golden>"
 )
 RUNS = golden_runs()
-CURRENT_CLAMP_RUNS = [run for run in RUNS if run.clamp_mode == CURRENT_CLAMP]
 
 
 def _manifest() -> dict:
@@ -101,11 +98,9 @@ def test_matches_golden_trace(run: GoldenRun) -> None:
     )
 
 
-@pytest.mark.parametrize(
-    "run", CURRENT_CLAMP_RUNS, ids=[run.test_id for run in CURRENT_CLAMP_RUNS]
-)
+@pytest.mark.parametrize("run", RUNS, ids=[run.test_id for run in RUNS])
 def test_rust_backend_matches_golden_trace(run: GoldenRun) -> None:
-    """A current-clamp run on the Rust backend matches the stored baseline.
+    """A run on the Rust backend matches the stored baseline.
 
     The baseline comes from the Python backend, so this checks the two
     backends against each other with the same tolerance band.
