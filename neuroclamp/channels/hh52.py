@@ -1,12 +1,9 @@
 """Hodgkin-Huxley (1952) squid axon channel factories and rate functions.
 
-This module provides the six classic HH rate functions as module-level
-callables and four factory functions that bundle them into IonChannel objects.
-
-Rate functions all follow the ``(V: float, ca_i: float) -> float`` signature so
-they can be used directly as :class:`~neuroclamp.channels.GatingVariable` rate
-functions.  The ``ca_i`` argument is accepted but ignored; it exists only for
-interface compatibility with calcium-sensitive gating variables.
+This module provides the six classic HH rates as module-level rate
+expressions (see :mod:`neuroclamp.rates`) and four factory functions that
+bundle them into IonChannel objects.  Each rate is a callable
+``(V, ca_i) -> float`` in 1/ms and does not depend on ``ca_i``.
 
 The passive leak is split into two non-specific conductances:
 - :func:`make_na_leak_channel`: Na⁺ leak, reversal via Nernst equation for Na⁺.
@@ -17,8 +14,7 @@ channels + persistent Na⁺ leak) and removes the unphysiological dependence on
 intracellular [Cl⁻] that arose when using a single chloride-Nernst leak.
 """
 
-from ..rates import SINGULARITY_THRESHOLD, VoltageOnlyFn
-from ..utils import safe_exp
+from ..rates import SINGULARITY_THRESHOLD, Exp, ExpLinear, Sigmoid
 from .base import GatingVariable, IonChannel, IonSpecies, NernstSpec
 
 __all__ = [
@@ -36,112 +32,25 @@ __all__ = [
 ]
 
 
-def _alpha_n_impl(V: float, ca_i: float) -> float:
-    """Forward rate for potassium channel activation gate n.
+#: Forward rate for K⁺ activation gate n:
+#: ``0.01 (V + 55) / (1 − exp(−(V + 55) / 10))``, limit 0.1 at V = −55 mV.
+alpha_n = ExpLinear(0.01, -55.0, 10.0)
 
-    Has a removable singularity at V = −55 mV; the L'Hôpital limit (0.1) is
-    returned when ``|V + 55| < SINGULARITY_THRESHOLD``.
+#: Backward rate for K⁺ activation gate n: ``0.125 exp(−(V + 65) / 80)``.
+beta_n = Exp(0.125, -65.0, -80.0)
 
-    Args:
-        V: Membrane voltage in mV.
-        ca_i: Intracellular Ca²⁺ concentration in mM (accepted but ignored).
+#: Forward rate for Na⁺ activation gate m:
+#: ``0.1 (V + 40) / (1 − exp(−(V + 40) / 10))``, limit 1.0 at V = −40 mV.
+alpha_m = ExpLinear(0.1, -40.0, 10.0)
 
-    Returns:
-        Forward rate in 1/ms.
-    """
-    if abs(V + 55) < SINGULARITY_THRESHOLD:
-        return 0.1
-    denominator = 1 - safe_exp(-(V + 55) / 10)
-    return 0.01 * (V + 55) / denominator
+#: Backward rate for Na⁺ activation gate m: ``4 exp(−(V + 65) / 18)``.
+beta_m = Exp(4.0, -65.0, -18.0)
 
+#: Forward rate for Na⁺ inactivation gate h: ``0.07 exp(−(V + 65) / 20)``.
+alpha_h = Exp(0.07, -65.0, -20.0)
 
-alpha_n = VoltageOnlyFn(_alpha_n_impl)
-
-
-def _beta_n_impl(V: float, ca_i: float) -> float:
-    """Backward rate for potassium channel activation gate n.
-
-    Args:
-        V: Membrane voltage in mV.
-        ca_i: Intracellular Ca²⁺ concentration in mM (accepted but ignored).
-
-    Returns:
-        Backward rate in 1/ms.
-    """
-    return 0.125 * safe_exp(-(V + 65) / 80)
-
-
-beta_n = VoltageOnlyFn(_beta_n_impl)
-
-
-def _alpha_m_impl(V: float, ca_i: float) -> float:
-    """Forward rate for sodium channel activation gate m.
-
-    Has a removable singularity at V = −40 mV; the L'Hôpital limit (1.0) is
-    returned when ``|V + 40| < SINGULARITY_THRESHOLD``.
-
-    Args:
-        V: Membrane voltage in mV.
-        ca_i: Intracellular Ca²⁺ concentration in mM (accepted but ignored).
-
-    Returns:
-        Forward rate in 1/ms.
-    """
-    if abs(V + 40) < SINGULARITY_THRESHOLD:
-        return 1.0
-    denominator = 1 - safe_exp(-(V + 40) / 10)
-    return 0.1 * (V + 40) / denominator
-
-
-alpha_m = VoltageOnlyFn(_alpha_m_impl)
-
-
-def _beta_m_impl(V: float, ca_i: float) -> float:
-    """Backward rate for sodium channel activation gate m.
-
-    Args:
-        V: Membrane voltage in mV.
-        ca_i: Intracellular Ca²⁺ concentration in mM (accepted but ignored).
-
-    Returns:
-        Backward rate in 1/ms.
-    """
-    return 4.0 * safe_exp(-(V + 65) / 18)
-
-
-beta_m = VoltageOnlyFn(_beta_m_impl)
-
-
-def _alpha_h_impl(V: float, ca_i: float) -> float:
-    """Forward rate for sodium inactivation gate h.
-
-    Args:
-        V: Membrane voltage in mV.
-        ca_i: Intracellular Ca²⁺ concentration in mM (accepted but ignored).
-
-    Returns:
-        Forward rate in 1/ms.
-    """
-    return 0.07 * safe_exp(-(V + 65) / 20)
-
-
-alpha_h = VoltageOnlyFn(_alpha_h_impl)
-
-
-def _beta_h_impl(V: float, ca_i: float) -> float:
-    """Backward rate for sodium inactivation gate h.
-
-    Args:
-        V: Membrane voltage in mV.
-        ca_i: Intracellular Ca²⁺ concentration in mM (accepted but ignored).
-
-    Returns:
-        Backward rate in 1/ms.
-    """
-    return 1 / (1 + safe_exp(-(V + 35) / 10))
-
-
-beta_h = VoltageOnlyFn(_beta_h_impl)
+#: Backward rate for Na⁺ inactivation gate h: ``1 / (1 + exp(−(V + 35) / 10))``.
+beta_h = Sigmoid(1.0, -35.0, 10.0)
 
 
 def make_na_channel(g_max: float) -> IonChannel:
