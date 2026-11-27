@@ -1,107 +1,60 @@
-"""Shared Traub-Miles (1991) analytical rate-function helpers.
+"""Shared Traub-Miles (1991) rate expressions.
 
-All four cell-type-specific families (Pospischil, Thalamic Relay, TRN,
-Purkinje, SNc Dopaminergic) use the same six Traub-Miles analytical forms —
-they differ only in the voltage threshold parameter ``vt``.  These private
-helpers encode each form once; the public wrappers delegate to them with the
-appropriate VT constant.
+The cell-type families (Pospischil, thalamic relay, TRN, Purkinje, SNc
+dopaminergic) use the same six Traub-Miles forms and differ only in the
+voltage threshold ``vt``.  :func:`traub_miles_rates` builds the six rates for
+a given ``vt`` as rate expressions (see :mod:`neuroclamp.rates`).
 """
 
-from ..rates import SINGULARITY_THRESHOLD
-from ..utils import safe_exp
+from typing import NamedTuple
+
+from ..rates import Exp, ExpLinear, Sigmoid
 
 
-def _traub_miles_alpha_m(V: float, vt: float) -> float:
-    """Traub-Miles forward rate for Na⁺ activation gate m.
+class TraubMilesRates(NamedTuple):
+    """The six Traub-Miles rates for one voltage threshold, in 1/ms.
 
-    Has a removable singularity at V = vt + 13; the L'Hôpital limit (1.28)
-    is returned when ``|V − vt − 13| < SINGULARITY_THRESHOLD``.
+    Attributes:
+        alpha_m: Na⁺ activation forward rate,
+            ``0.32 (V − vt − 13) / (1 − exp(−(V − vt − 13) / 4))``; limit 1.28
+            at ``V = vt + 13``.
+        beta_m: Na⁺ activation backward rate,
+            ``0.28 (V − vt − 40) / (exp((V − vt − 40) / 5) − 1)``; limit 1.4 at
+            ``V = vt + 40``.
+        alpha_h: Na⁺ inactivation forward rate,
+            ``0.128 exp(−(V − vt − 17) / 18)``.
+        beta_h: Na⁺ inactivation backward rate,
+            ``4 / (1 + exp(−(V − vt − 40) / 5))``.
+        alpha_n: K⁺ activation forward rate,
+            ``0.032 (V − vt − 15) / (1 − exp(−(V − vt − 15) / 5))``; limit 0.16
+            at ``V = vt + 15``.
+        beta_n: K⁺ activation backward rate, ``0.5 exp(−(V − vt − 10) / 40)``.
+    """
+
+    alpha_m: ExpLinear
+    beta_m: ExpLinear
+    alpha_h: Exp
+    beta_h: Sigmoid
+    alpha_n: ExpLinear
+    beta_n: Exp
+
+
+def traub_miles_rates(vt: float) -> TraubMilesRates:
+    """Build the six Traub-Miles rates for a cell-type voltage threshold.
 
     Args:
-        V: Membrane voltage in mV.
         vt: Cell-type voltage threshold in mV.
 
     Returns:
-        Forward rate in 1/ms.
+        The rates as expressions; see :class:`TraubMilesRates` for each form.
     """
-    x = V - vt - 13
-    if abs(x) < SINGULARITY_THRESHOLD:
-        return 1.28
-    return -0.32 * x / (safe_exp(-x / 4) - 1)
-
-
-def _traub_miles_beta_m(V: float, vt: float) -> float:
-    """Traub-Miles backward rate for Na⁺ activation gate m.
-
-    Has a removable singularity at V = vt + 40; the L'Hôpital limit (1.4)
-    is returned when ``|V − vt − 40| < SINGULARITY_THRESHOLD``.
-
-    Args:
-        V: Membrane voltage in mV.
-        vt: Cell-type voltage threshold in mV.
-
-    Returns:
-        Backward rate in 1/ms.
-    """
-    x = V - vt - 40
-    if abs(x) < SINGULARITY_THRESHOLD:
-        return 1.4
-    return 0.28 * x / (safe_exp(x / 5) - 1)
-
-
-def _traub_miles_alpha_h(V: float, vt: float) -> float:
-    """Traub-Miles forward rate for Na⁺ inactivation gate h.
-
-    Args:
-        V: Membrane voltage in mV.
-        vt: Cell-type voltage threshold in mV.
-
-    Returns:
-        Forward rate in 1/ms.
-    """
-    return 0.128 * safe_exp(-(V - vt - 17) / 18)
-
-
-def _traub_miles_beta_h(V: float, vt: float) -> float:
-    """Traub-Miles backward rate for Na⁺ inactivation gate h.
-
-    Args:
-        V: Membrane voltage in mV.
-        vt: Cell-type voltage threshold in mV.
-
-    Returns:
-        Backward rate in 1/ms.
-    """
-    return 4.0 / (1 + safe_exp(-(V - vt - 40) / 5))
-
-
-def _traub_miles_alpha_n(V: float, vt: float) -> float:
-    """Traub-Miles forward rate for K⁺ delayed-rectifier activation gate n.
-
-    Has a removable singularity at V = vt + 15; the L'Hôpital limit (0.16)
-    is returned when ``|V − vt − 15| < SINGULARITY_THRESHOLD``.
-
-    Args:
-        V: Membrane voltage in mV.
-        vt: Cell-type voltage threshold in mV.
-
-    Returns:
-        Forward rate in 1/ms.
-    """
-    x = V - vt - 15
-    if abs(x) < SINGULARITY_THRESHOLD:
-        return 0.16
-    return -0.032 * x / (safe_exp(-x / 5) - 1)
-
-
-def _traub_miles_beta_n(V: float, vt: float) -> float:
-    """Traub-Miles backward rate for K⁺ delayed-rectifier activation gate n.
-
-    Args:
-        V: Membrane voltage in mV.
-        vt: Cell-type voltage threshold in mV.
-
-    Returns:
-        Backward rate in 1/ms.
-    """
-    return 0.5 * safe_exp(-(V - vt - 10) / 40)
+    return TraubMilesRates(
+        alpha_m=ExpLinear(0.32, vt + 13.0, 4.0),
+        # 0.28 x / (exp(x / 5) − 1) is the mirrored exp-linear form, so both
+        # k and s change sign.
+        beta_m=ExpLinear(-0.28, vt + 40.0, -5.0),
+        alpha_h=Exp(0.128, vt + 17.0, -18.0),
+        beta_h=Sigmoid(4.0, vt + 40.0, 5.0),
+        alpha_n=ExpLinear(0.032, vt + 15.0, 5.0),
+        beta_n=Exp(0.5, vt + 10.0, -40.0),
+    )

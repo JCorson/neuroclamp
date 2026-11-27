@@ -14,19 +14,10 @@ Parameterisation:
   Biol. Cybern. 99:427–441, Table 2 (RE cell, VT = −67 mV).
 """
 
-import dataclasses
-
 from ..constants import DEFAULT_G_ICAT
-from ..rates import VoltageOnlyFn, VoltageOnlyRate
+from ..rates import VoltageOnlyFn
 from ..utils import safe_exp
-from ._traub_miles import (
-    _traub_miles_alpha_h,
-    _traub_miles_alpha_m,
-    _traub_miles_alpha_n,
-    _traub_miles_beta_h,
-    _traub_miles_beta_m,
-    _traub_miles_beta_n,
-)
+from ._traub_miles import traub_miles_rates
 from .auxiliary import _alpha_dt, _beta_dt
 from .base import GatingVariable, IonChannel, IonSpecies, NernstSpec
 
@@ -48,208 +39,30 @@ __all__ = [
 TRN_VT: float = -67.0
 
 
-def _trn_alpha_m_impl(V: float, ca_i: float) -> float:
-    """Forward rate for TRN Na⁺ activation gate m.
+# Traub-Miles rates parameterized for thalamic reticular nucleus cells
+# (VT = −67 mV).
+# Reference: Huguenard & Prince (1992), J. Neurosci. 12:3804;
+# Destexhe et al. (1994), J. Neurophysiol. 72:803;
+# Pospischil et al. (2008), Biol. Cybern. 99:427, Table 2 (RE model).
+_TRN_RATES = traub_miles_rates(TRN_VT)
 
-    Traub-Miles form parameterised for thalamic reticular nucleus cells
-    (VT = −67 mV).  Has a removable singularity at V = VT + 13 = −54 mV;
-    the L'Hôpital limit (1.28) is returned when
-    ``|V − VT − 13| < SINGULARITY_THRESHOLD``.
+#: Forward rate for TRN Na⁺ activation gate m.
+trn_alpha_m = _TRN_RATES.alpha_m
 
-    Reference: Huguenard & Prince (1992), J. Neurosci. 12:3804;
-    Destexhe et al. (1994), J. Neurophysiol. 72:803;
-    Pospischil et al. (2008), Biol. Cybern. 99:427, Table 2 (RE model).
+#: Backward rate for TRN Na⁺ activation gate m.
+trn_beta_m = _TRN_RATES.beta_m
 
-    Args:
-        V: Membrane voltage in mV.
-        ca_i: Intracellular Ca²⁺ concentration in mM (accepted but ignored).
+#: Forward rate for TRN Na⁺ inactivation gate h.
+trn_alpha_h = _TRN_RATES.alpha_h
 
-    Returns:
-        Forward rate in 1/ms.
-    """
-    return _traub_miles_alpha_m(V, TRN_VT)
+#: Backward rate for TRN Na⁺ inactivation gate h.
+trn_beta_h = _TRN_RATES.beta_h
 
+#: Forward rate for TRN K⁺ activation gate n.
+trn_alpha_n = _TRN_RATES.alpha_n
 
-trn_alpha_m = VoltageOnlyFn(_trn_alpha_m_impl)
-
-
-def _trn_beta_m_impl(V: float, ca_i: float) -> float:
-    """Backward rate for TRN Na⁺ activation gate m.
-
-    Traub-Miles form parameterised for thalamic reticular nucleus cells
-    (VT = −67 mV).  Has a removable singularity at V = VT + 40 = −27 mV;
-    the L'Hôpital limit (1.4) is returned when
-    ``|V − VT − 40| < SINGULARITY_THRESHOLD``.
-
-    Reference: Huguenard & Prince (1992), J. Neurosci. 12:3804;
-    Destexhe et al. (1994), J. Neurophysiol. 72:803;
-    Pospischil et al. (2008), Biol. Cybern. 99:427, Table 2 (RE model).
-
-    Args:
-        V: Membrane voltage in mV.
-        ca_i: Intracellular Ca²⁺ concentration in mM (accepted but ignored).
-
-    Returns:
-        Backward rate in 1/ms.
-    """
-    return _traub_miles_beta_m(V, TRN_VT)
-
-
-trn_beta_m = VoltageOnlyFn(_trn_beta_m_impl)
-
-
-def _trn_alpha_h_impl(V: float, ca_i: float) -> float:
-    """Forward rate for TRN Na⁺ inactivation gate h.
-
-    Traub-Miles form parameterised for thalamic reticular nucleus cells
-    (VT = −67 mV).
-
-    Reference: Huguenard & Prince (1992), J. Neurosci. 12:3804;
-    Destexhe et al. (1994), J. Neurophysiol. 72:803;
-    Pospischil et al. (2008), Biol. Cybern. 99:427, Table 2 (RE model).
-
-    Args:
-        V: Membrane voltage in mV.
-        ca_i: Intracellular Ca²⁺ concentration in mM (accepted but ignored).
-
-    Returns:
-        Forward rate in 1/ms.
-    """
-    return _traub_miles_alpha_h(V, TRN_VT)
-
-
-trn_alpha_h = VoltageOnlyFn(_trn_alpha_h_impl)
-
-
-def _trn_beta_h_impl(V: float, ca_i: float) -> float:
-    """Backward rate for TRN Na⁺ inactivation gate h.
-
-    Traub-Miles form parameterised for thalamic reticular nucleus cells
-    (VT = −67 mV).
-
-    Reference: Huguenard & Prince (1992), J. Neurosci. 12:3804;
-    Destexhe et al. (1994), J. Neurophysiol. 72:803;
-    Pospischil et al. (2008), Biol. Cybern. 99:427, Table 2 (RE model).
-
-    Args:
-        V: Membrane voltage in mV.
-        ca_i: Intracellular Ca²⁺ concentration in mM (accepted but ignored).
-
-    Returns:
-        Backward rate in 1/ms.
-    """
-    return _traub_miles_beta_h(V, TRN_VT)
-
-
-trn_beta_h = VoltageOnlyFn(_trn_beta_h_impl)
-
-
-def _trn_alpha_n_impl(V: float, ca_i: float) -> float:
-    """Forward rate for TRN K⁺ delayed-rectifier activation gate n.
-
-    Traub-Miles form parameterised for thalamic reticular nucleus cells
-    (VT = −67 mV).  Has a removable singularity at V = VT + 15 = −52 mV;
-    the L'Hôpital limit (0.16) is returned when
-    ``|V − VT − 15| < SINGULARITY_THRESHOLD``.
-
-    Reference: Huguenard & Prince (1992), J. Neurosci. 12:3804;
-    Destexhe et al. (1994), J. Neurophysiol. 72:803;
-    Pospischil et al. (2008), Biol. Cybern. 99:427, Table 2 (RE model).
-
-    Args:
-        V: Membrane voltage in mV.
-        ca_i: Intracellular Ca²⁺ concentration in mM (accepted but ignored).
-
-    Returns:
-        Forward rate in 1/ms.
-    """
-    return _traub_miles_alpha_n(V, TRN_VT)
-
-
-trn_alpha_n = VoltageOnlyFn(_trn_alpha_n_impl)
-
-
-def _trn_beta_n_impl(V: float, ca_i: float) -> float:
-    """Backward rate for TRN K⁺ delayed-rectifier activation gate n.
-
-    Traub-Miles form parameterised for thalamic reticular nucleus cells
-    (VT = −67 mV).
-
-    Reference: Huguenard & Prince (1992), J. Neurosci. 12:3804;
-    Destexhe et al. (1994), J. Neurophysiol. 72:803;
-    Pospischil et al. (2008), Biol. Cybern. 99:427, Table 2 (RE model).
-
-    Args:
-        V: Membrane voltage in mV.
-        ca_i: Intracellular Ca²⁺ concentration in mM (accepted but ignored).
-
-    Returns:
-        Backward rate in 1/ms.
-    """
-    return _traub_miles_beta_n(V, TRN_VT)
-
-
-trn_beta_n = VoltageOnlyFn(_trn_beta_n_impl)
-
-
-@dataclasses.dataclass(frozen=True)
-class _ShiftedTrnAlphaH(VoltageOnlyRate):
-    """Picklable Traub-Miles ``alpha_h`` rate with h V½ shifted depolarized.
-
-    The shift evaluates the underlying Traub-Miles ``alpha_h`` at
-    ``V − h_v_half_shift``, so at any membrane voltage the gate behaves as
-    if V were ``h_v_half_shift`` mV more hyperpolarized — larger alpha
-    (faster recovery from inactivation) at the LTS-plateau voltages.
-
-    Implemented as a frozen dataclass (not a closure-wrapping
-    :class:`~neuroclamp.rates.VoltageOnlyFn`) so that
-    :func:`~neuroclamp.clamp_simulations.simulate_batch` can pickle the
-    instance when handing it to a worker process.
-
-    Attributes:
-        h_v_half_shift: Depolarized shift of h V½ in mV.
-    """
-
-    h_v_half_shift: float
-
-    def __call__(self, V: float, ca_i: float) -> float:
-        """Evaluate alpha_h at ``V − h_v_half_shift`` against ``TRN_VT``.
-
-        Args:
-            V: Membrane voltage in mV.
-            ca_i: Intracellular Ca²⁺ concentration in mM (ignored).
-
-        Returns:
-            Forward rate in 1/ms.
-        """
-        return _traub_miles_alpha_h(V - self.h_v_half_shift, TRN_VT)
-
-
-@dataclasses.dataclass(frozen=True)
-class _ShiftedTrnBetaH(VoltageOnlyRate):
-    """Picklable Traub-Miles ``beta_h`` rate with h V½ shifted depolarized.
-
-    Pairs with :class:`_ShiftedTrnAlphaH`: evaluating beta_h at
-    ``V − h_v_half_shift`` yields smaller beta at the LTS-plateau voltages
-    (slower inactivation), reinforcing the alpha_h gain.
-
-    Attributes:
-        h_v_half_shift: Depolarized shift of h V½ in mV.
-    """
-
-    h_v_half_shift: float
-
-    def __call__(self, V: float, ca_i: float) -> float:
-        """Evaluate beta_h at ``V − h_v_half_shift`` against ``TRN_VT``.
-
-        Args:
-            V: Membrane voltage in mV.
-            ca_i: Intracellular Ca²⁺ concentration in mM (ignored).
-
-        Returns:
-            Backward rate in 1/ms.
-        """
-        return _traub_miles_beta_h(V - self.h_v_half_shift, TRN_VT)
+#: Backward rate for TRN K⁺ activation gate n.
+trn_beta_n = _TRN_RATES.beta_n
 
 
 def make_trn_na_channel(g_max: float, h_v_half_shift: float = 0.0) -> IonChannel:
@@ -292,14 +105,18 @@ def make_trn_na_channel(g_max: float, h_v_half_shift: float = 0.0) -> IonChannel
         An :class:`~neuroclamp.channels.IonChannel` representing the TRN fast
         Na⁺ channel.
     """
-    # Unshifted callers reuse the cached module-level rate objects so gate
-    # identity is preserved; any shift wraps in the picklable dataclass.
+    # Unshifted callers reuse the module-level rate objects.  A shift moves
+    # the h rates' reference voltages by +h_v_half_shift: evaluating them at
+    # V − shift is the same as raising vt by shift, so at any membrane voltage
+    # the gate behaves as if V were shift mV more hyperpolarized (larger
+    # alpha_h, smaller beta_h at LTS-plateau voltages).
     if h_v_half_shift == 0.0:
         alpha_h = trn_alpha_h
         beta_h = trn_beta_h
     else:
-        alpha_h = _ShiftedTrnAlphaH(h_v_half_shift=h_v_half_shift)
-        beta_h = _ShiftedTrnBetaH(h_v_half_shift=h_v_half_shift)
+        shifted = traub_miles_rates(TRN_VT + h_v_half_shift)
+        alpha_h = shifted.alpha_h
+        beta_h = shifted.beta_h
     return IonChannel(
         name="Na",
         g_max=g_max,

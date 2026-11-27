@@ -7,15 +7,7 @@ Rate functions adopted from Traub & Miles (1991) / Huguenard & McCormick
 """
 
 from ..electrochemistry import boltzmann_cosh_rates
-from ..rates import VoltageOnlyFn
-from ._traub_miles import (
-    _traub_miles_alpha_h,
-    _traub_miles_alpha_m,
-    _traub_miles_alpha_n,
-    _traub_miles_beta_h,
-    _traub_miles_beta_m,
-    _traub_miles_beta_n,
-)
+from ._traub_miles import traub_miles_rates
 from .base import GatingVariable, IonChannel, IonSpecies, NernstSpec
 
 __all__ = [
@@ -37,118 +29,26 @@ __all__ = [
 POSPISCHIL_VT: float = -56.2
 
 
-def _pospischil_alpha_m_impl(V: float, ca_i: float) -> float:
-    """Forward rate for Pospischil Na⁺ activation gate m.
+# Traub & Miles (1991) rates with VT = −56.2 mV.
+_POSPISCHIL_RATES = traub_miles_rates(POSPISCHIL_VT)
 
-    Adopted from Traub & Miles (1991).  Has a removable singularity at
-    V = VT + 13 = −43.2 mV; the L'Hôpital limit (1.28) is returned when
-    ``|V − VT − 13| < SINGULARITY_THRESHOLD``.
+#: Forward rate for Pospischil Na⁺ activation gate m.
+pospischil_alpha_m = _POSPISCHIL_RATES.alpha_m
 
-    Args:
-        V: Membrane voltage in mV.
-        ca_i: Intracellular Ca²⁺ concentration in mM (accepted but ignored).
+#: Backward rate for Pospischil Na⁺ activation gate m.
+pospischil_beta_m = _POSPISCHIL_RATES.beta_m
 
-    Returns:
-        Forward rate in 1/ms.
-    """
-    return _traub_miles_alpha_m(V, POSPISCHIL_VT)
+#: Forward rate for Pospischil Na⁺ inactivation gate h.
+pospischil_alpha_h = _POSPISCHIL_RATES.alpha_h
 
+#: Backward rate for Pospischil Na⁺ inactivation gate h.
+pospischil_beta_h = _POSPISCHIL_RATES.beta_h
 
-pospischil_alpha_m = VoltageOnlyFn(_pospischil_alpha_m_impl)
+#: Forward rate for Pospischil K⁺ activation gate n.
+pospischil_alpha_n = _POSPISCHIL_RATES.alpha_n
 
-
-def _pospischil_beta_m_impl(V: float, ca_i: float) -> float:
-    """Backward rate for Pospischil Na⁺ activation gate m.
-
-    Adopted from Traub & Miles (1991).  Has a removable singularity at
-    V = VT + 40 = −16.2 mV; the L'Hôpital limit (1.4) is returned when
-    ``|V − VT − 40| < SINGULARITY_THRESHOLD``.
-
-    Args:
-        V: Membrane voltage in mV.
-        ca_i: Intracellular Ca²⁺ concentration in mM (accepted but ignored).
-
-    Returns:
-        Backward rate in 1/ms.
-    """
-    return _traub_miles_beta_m(V, POSPISCHIL_VT)
-
-
-pospischil_beta_m = VoltageOnlyFn(_pospischil_beta_m_impl)
-
-
-def _pospischil_alpha_h_impl(V: float, ca_i: float) -> float:
-    """Forward rate for Pospischil Na⁺ inactivation gate h.
-
-    Adopted from Traub & Miles (1991).
-
-    Args:
-        V: Membrane voltage in mV.
-        ca_i: Intracellular Ca²⁺ concentration in mM (accepted but ignored).
-
-    Returns:
-        Forward rate in 1/ms.
-    """
-    return _traub_miles_alpha_h(V, POSPISCHIL_VT)
-
-
-pospischil_alpha_h = VoltageOnlyFn(_pospischil_alpha_h_impl)
-
-
-def _pospischil_beta_h_impl(V: float, ca_i: float) -> float:
-    """Backward rate for Pospischil Na⁺ inactivation gate h.
-
-    Adopted from Traub & Miles (1991).
-
-    Args:
-        V: Membrane voltage in mV.
-        ca_i: Intracellular Ca²⁺ concentration in mM (accepted but ignored).
-
-    Returns:
-        Backward rate in 1/ms.
-    """
-    return _traub_miles_beta_h(V, POSPISCHIL_VT)
-
-
-pospischil_beta_h = VoltageOnlyFn(_pospischil_beta_h_impl)
-
-
-def _pospischil_alpha_n_impl(V: float, ca_i: float) -> float:
-    """Forward rate for Pospischil K⁺ delayed-rectifier activation gate n.
-
-    Adopted from Traub & Miles (1991).  Has a removable singularity at
-    V = VT + 15 = −41.2 mV; the L'Hôpital limit (0.16) is returned when
-    ``|V − VT − 15| < SINGULARITY_THRESHOLD``.
-
-    Args:
-        V: Membrane voltage in mV.
-        ca_i: Intracellular Ca²⁺ concentration in mM (accepted but ignored).
-
-    Returns:
-        Forward rate in 1/ms.
-    """
-    return _traub_miles_alpha_n(V, POSPISCHIL_VT)
-
-
-pospischil_alpha_n = VoltageOnlyFn(_pospischil_alpha_n_impl)
-
-
-def _pospischil_beta_n_impl(V: float, ca_i: float) -> float:
-    """Backward rate for Pospischil K⁺ delayed-rectifier activation gate n.
-
-    Adopted from Traub & Miles (1991).
-
-    Args:
-        V: Membrane voltage in mV.
-        ca_i: Intracellular Ca²⁺ concentration in mM (accepted but ignored).
-
-    Returns:
-        Backward rate in 1/ms.
-    """
-    return _traub_miles_beta_n(V, POSPISCHIL_VT)
-
-
-pospischil_beta_n = VoltageOnlyFn(_pospischil_beta_n_impl)
+#: Backward rate for Pospischil K⁺ activation gate n.
+pospischil_beta_n = _POSPISCHIL_RATES.beta_n
 
 
 # ---------------------------------------------------------------------------
