@@ -123,6 +123,9 @@ Reflex telemetry is disabled in the image.
 You should have the following installed:
 
 - [uv](https://docs.astral.sh/uv/getting-started/installation/): Python package manager
+- [Rust](https://rustup.rs/) (stable): `uv sync` compiles the simulation core in
+  `rust/` into the `neuroclamp._core` extension. Installing the published wheels
+  from PyPI does not need Rust.
 
 
 ### Development tooling
@@ -137,7 +140,16 @@ uv sync --frozen --group=dev
 ```
 
 This creates a Python `venv` virtual environment under the name `.venv`
-in the top-level directory of the repository.
+in the top-level directory of the repository, and builds the Rust extension
+into it. `uv sync` rebuilds the extension whenever a file under `rust/` changes.
+
+The Rust code has its own checks, run from `rust/`:
+
+```
+cargo fmt --check
+cargo clippy --all-targets -- -D warnings
+cargo test --no-default-features
+```
 
 #### Managing dependencies
 
