@@ -462,9 +462,9 @@ class _Emitter:
 
     Parameter values are never written into the source text.  Each constant,
     opaque rate, and helper is bound to a generated name (``_c0``, ``_r1``,
-    ...) and passed to the compiled function as a keyword-only default, which
-    makes it a fast local variable and means the source contains only
-    generated identifiers and operators, whatever values a node holds.
+    ...) that the compiled function reads as a closure variable, so the
+    source contains only generated identifiers and operators, whatever values
+    a node holds.
     """
 
     def __init__(self) -> None:
@@ -549,12 +549,22 @@ def _compile(expr: "Expr") -> Callable[[float, float], float]:
     """
     emit = _Emitter()
     body = emit.source(expr)
-    defaults = ", ".join(f"{name}={name}" for name in emit.values)
-    source = f"def _rate(V, ca_i, *, {defaults}):\n    return {body}\n"
-    namespace = dict(emit.values)
+    names = ", ".join(emit.values)
+    # An outer factory receives the bound values as arguments; the inner
+    # function reads them as closure variables, which costs nothing per call.
+    source = (
+        f"def _factory({names}):\n"
+        f"    def _rate(V, ca_i):\n"
+        f"        return {body}\n"
+        f"    return _rate\n"
+    )
+    namespace: dict[str, object] = {}
     # The source holds only generated names and operators (see _Emitter).
     exec(source, namespace)
-    return cast("Callable[[float, float], float]", namespace["_rate"])
+    factory = cast(
+        "Callable[..., Callable[[float, float], float]]", namespace["_factory"]
+    )
+    return factory(**emit.values)
 
 
 @dataclass(frozen=True)
