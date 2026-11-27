@@ -285,3 +285,66 @@ def test_exp_linear_with_negated_k_and_s_gives_the_mirrored_form() -> None:
         assert rate(V, 0.0) == pytest.approx(0.28 * x / (math.exp(x / 5.0) - 1.0))
         assert rate(V, 0.0) > 0.0
     assert rate(40.0, 0.0) == pytest.approx(0.28 * 5.0)
+
+
+def _plateau(V: float, ca_i: float) -> float:
+    """Return a constant voltage-only test rate.
+
+    Args:
+        V: Membrane voltage in mV (ignored).
+        ca_i: Intracellular Ca²⁺ concentration in mM (ignored).
+
+    Returns:
+        0.5 per ms.
+    """
+    return 0.5
+
+
+def _ca_linear(V: float, ca_i: float) -> float:
+    """Return a test rate proportional to ca_i.
+
+    Args:
+        V: Membrane voltage in mV (ignored).
+        ca_i: Intracellular Ca²⁺ concentration in mM.
+
+    Returns:
+        ``2 · ca_i`` per ms.
+    """
+    return 2.0 * ca_i
+
+
+def test_expressions_combine_with_adapter_rates() -> None:
+    """Adapters can be operands of expressions on either side of an operator."""
+    sig = Sigmoid(1.0, -40.0, 8.0)
+    voltage_only = VoltageOnlyFn(_plateau)
+    ca_dependent = CalciumDependentFn(_ca_linear)
+
+    product = sig * voltage_only
+    assert product == Mul(sig, voltage_only)
+    assert product(-40.0, 0.0) == pytest.approx(0.25)
+    assert not product.uses_calcium
+
+    reflected = voltage_only + sig
+    assert reflected == Add(voltage_only, sig)
+    assert reflected(-40.0, 0.0) == pytest.approx(1.0)
+
+    with_ca = sig - ca_dependent
+    assert with_ca(-40.0, 0.1) == pytest.approx(0.3)
+    assert with_ca.uses_calcium
+
+    alpha, beta = inf_tau(sig, voltage_only)
+    assert alpha(-40.0, 0.0) == pytest.approx(1.0)
+    assert beta(-40.0, 0.0) == pytest.approx(1.0)
+    assert pickle.loads(pickle.dumps(product)) == product
+
+
+def test_operators_reject_unsupported_operands_with_type_error() -> None:
+    """Non-numeric, non-rate operands raise TypeError via NotImplemented."""
+    sig = Sigmoid(1.0, -40.0, 8.0)
+    assert sig.__add__("a") is NotImplemented
+    with pytest.raises(TypeError):
+        sig + "a"  # type: ignore[operator]
+    with pytest.raises(TypeError):
+        "a" * sig  # type: ignore[operator]
+    with pytest.raises(TypeError):
+        inf_tau(sig, "a")  # type: ignore[arg-type]

@@ -25,6 +25,7 @@ relied on by :func:`~neuroclamp.clamp_simulations.simulate_batch`.
 from abc import ABC, abstractmethod
 from collections.abc import Callable
 from dataclasses import dataclass
+from numbers import Real
 
 from .utils import safe_cosh, safe_exp
 
@@ -168,18 +169,23 @@ class Expr(Rate):
 
         tau_h = 1.0 / (Exp(0.128, -38.0, -18.0) + Sigmoid(4.0, -15.0, 5.0))
 
+    An operand can also be a :class:`VoltageOnlyFn` or
+    :class:`CalciumDependentFn`, so a term no form covers can be combined
+    with the standard forms.
+
     :attr:`uses_calcium` is derived from the tree: an expression reads ca_i
-    exactly when it contains a :class:`Hill` node.  Because the structure is
-    plain data, expressions compare by value, pickle for
+    exactly when it contains a :class:`Hill` node or a rate (such as a
+    :class:`CalciumDependentFn`) that reports ``uses_calcium``.  Because the
+    structure is plain data, expressions compare by value, pickle for
     :func:`~neuroclamp.clamp_simulations.simulate_batch`, and can be inspected
     or translated by other tools.
     """
 
-    def children(self) -> tuple["Expr", ...]:
-        """Return this node's direct sub-expressions.
+    def children(self) -> tuple[Rate, ...]:
+        """Return this node's direct operands.
 
         Returns:
-            The child nodes; empty for leaf forms.
+            The child rates; empty for leaf forms.
         """
         return ()
 
@@ -192,105 +198,163 @@ class Expr(Rate):
         """
         return any(child.uses_calcium for child in self.children())
 
-    def __add__(self, other: "Expr | float") -> "Expr":
+    def __add__(self, other: object) -> "Expr":
         """Build ``self + other``.
 
         Args:
-            other: Right operand; numbers become :class:`Const`.
+            other: Right operand: a :class:`Rate` or a number, which becomes
+                a :class:`Const`.
 
         Returns:
-            An :class:`Add` node.
+            An :class:`Add` node, or ``NotImplemented`` for any other operand type.
         """
-        return Add(self, _as_expr(other))
+        o = _coerce(other)
+        if o is None:
+            return NotImplemented
+        return Add(self, o)
 
-    def __radd__(self, other: "Expr | float") -> "Expr":
+    def __radd__(self, other: object) -> "Expr":
         """Build ``other + self``.
 
         Args:
-            other: Left operand; numbers become :class:`Const`.
+            other: Left operand: a :class:`Rate` or a number, which becomes
+                a :class:`Const`.
 
         Returns:
-            An :class:`Add` node.
+            An :class:`Add` node, or ``NotImplemented`` for any other operand type.
         """
-        return Add(_as_expr(other), self)
+        o = _coerce(other)
+        if o is None:
+            return NotImplemented
+        return Add(o, self)
 
-    def __sub__(self, other: "Expr | float") -> "Expr":
+    def __sub__(self, other: object) -> "Expr":
         """Build ``self - other``.
 
         Args:
-            other: Right operand; numbers become :class:`Const`.
+            other: Right operand: a :class:`Rate` or a number, which becomes
+                a :class:`Const`.
 
         Returns:
-            A :class:`Sub` node.
+            A :class:`Sub` node, or ``NotImplemented`` for any other operand type.
         """
-        return Sub(self, _as_expr(other))
+        o = _coerce(other)
+        if o is None:
+            return NotImplemented
+        return Sub(self, o)
 
-    def __rsub__(self, other: "Expr | float") -> "Expr":
+    def __rsub__(self, other: object) -> "Expr":
         """Build ``other - self``.
 
         Args:
-            other: Left operand; numbers become :class:`Const`.
+            other: Left operand: a :class:`Rate` or a number, which becomes
+                a :class:`Const`.
 
         Returns:
-            A :class:`Sub` node.
+            A :class:`Sub` node, or ``NotImplemented`` for any other operand type.
         """
-        return Sub(_as_expr(other), self)
+        o = _coerce(other)
+        if o is None:
+            return NotImplemented
+        return Sub(o, self)
 
-    def __mul__(self, other: "Expr | float") -> "Expr":
+    def __mul__(self, other: object) -> "Expr":
         """Build ``self * other``.
 
         Args:
-            other: Right operand; numbers become :class:`Const`.
+            other: Right operand: a :class:`Rate` or a number, which becomes
+                a :class:`Const`.
 
         Returns:
-            A :class:`Mul` node.
+            A :class:`Mul` node, or ``NotImplemented`` for any other operand type.
         """
-        return Mul(self, _as_expr(other))
+        o = _coerce(other)
+        if o is None:
+            return NotImplemented
+        return Mul(self, o)
 
-    def __rmul__(self, other: "Expr | float") -> "Expr":
+    def __rmul__(self, other: object) -> "Expr":
         """Build ``other * self``.
 
         Args:
-            other: Left operand; numbers become :class:`Const`.
+            other: Left operand: a :class:`Rate` or a number, which becomes
+                a :class:`Const`.
 
         Returns:
-            A :class:`Mul` node.
+            A :class:`Mul` node, or ``NotImplemented`` for any other operand type.
         """
-        return Mul(_as_expr(other), self)
+        o = _coerce(other)
+        if o is None:
+            return NotImplemented
+        return Mul(o, self)
 
-    def __truediv__(self, other: "Expr | float") -> "Expr":
+    def __truediv__(self, other: object) -> "Expr":
         """Build ``self / other``.
 
         Args:
-            other: Right operand; numbers become :class:`Const`.
+            other: Right operand: a :class:`Rate` or a number, which becomes
+                a :class:`Const`.
 
         Returns:
-            A :class:`Div` node.
+            A :class:`Div` node, or ``NotImplemented`` for any other operand type.
         """
-        return Div(self, _as_expr(other))
+        o = _coerce(other)
+        if o is None:
+            return NotImplemented
+        return Div(self, o)
 
-    def __rtruediv__(self, other: "Expr | float") -> "Expr":
+    def __rtruediv__(self, other: object) -> "Expr":
         """Build ``other / self``.
 
         Args:
-            other: Left operand; numbers become :class:`Const`.
+            other: Left operand: a :class:`Rate` or a number, which becomes
+                a :class:`Const`.
 
         Returns:
-            A :class:`Div` node.
+            A :class:`Div` node, or ``NotImplemented`` for any other operand type.
         """
-        return Div(_as_expr(other), self)
+        o = _coerce(other)
+        if o is None:
+            return NotImplemented
+        return Div(o, self)
 
 
-def _as_expr(value: "Expr | float") -> Expr:
-    """Wrap a plain number in :class:`Const`; pass expressions through.
+def _coerce(value: object) -> Rate | None:
+    """Convert an operand to a rate node, or ``None`` if it is not one.
+
+    Rates (expressions and the :class:`VoltageOnlyFn` /
+    :class:`CalciumDependentFn` adapters) pass through unchanged; real numbers
+    become :class:`Const`.
 
     Args:
-        value: An expression or a number.
+        value: The operand to convert.
 
     Returns:
-        An expression node.
+        A rate, or ``None`` for an unsupported type.
     """
-    return value if isinstance(value, Expr) else Const(float(value))
+    if isinstance(value, Rate):
+        return value
+    if isinstance(value, Real):
+        return Const(float(value))
+    return None
+
+
+def _as_expr(value: "Rate | float") -> Rate:
+    """Convert a rate or number to a rate node, rejecting other types.
+
+    Args:
+        value: A rate or a real number.
+
+    Returns:
+        ``value`` itself if it is a :class:`Rate`, else a :class:`Const`.
+
+    Raises:
+        TypeError: If ``value`` is neither a rate nor a real number.
+    """
+    rate = _coerce(value)
+    if rate is None:
+        raise TypeError(f"expected a Rate or a number, got {type(value).__name__}")
+    return rate
 
 
 @dataclass(frozen=True)
@@ -482,17 +546,17 @@ class Hill(Expr):
 
 @dataclass(frozen=True)
 class _Binary(Expr):
-    """Abstract base for nodes that combine two sub-expressions.
+    """Abstract base for nodes that combine two rates.
 
     Attributes:
         a: Left operand.
         b: Right operand.
     """
 
-    a: Expr
-    b: Expr
+    a: Rate
+    b: Rate
 
-    def children(self) -> tuple[Expr, ...]:
+    def children(self) -> tuple[Rate, ...]:
         """Return both operands.
 
         Returns:
@@ -638,7 +702,7 @@ class InfTauBeta(_Binary):
         return (1.0 - self.a(V, ca_i)) / self.b(V, ca_i)
 
 
-def inf_tau(inf: Expr, tau: "Expr | float") -> tuple[InfTauAlpha, InfTauBeta]:
+def inf_tau(inf: Expr, tau: "Rate | float") -> tuple[InfTauAlpha, InfTauBeta]:
     """Build a gate's (alpha, beta) rates from its steady state and time constant.
 
     Many channel models specify a gate by ``x_inf(V)`` and ``tau_x(V)``
@@ -647,7 +711,7 @@ def inf_tau(inf: Expr, tau: "Expr | float") -> tuple[InfTauAlpha, InfTauBeta]:
 
     Args:
         inf: Steady-state open probability expression.
-        tau: Time constant in ms, as an expression or a number.
+        tau: Time constant in ms, as a rate or a number.
 
     Returns:
         ``(alpha, beta)`` for a :class:`~neuroclamp.channels.GatingVariable`.
