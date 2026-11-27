@@ -21,8 +21,7 @@ from ..constants import (
     DEFAULT_IH_P_NA,
 )
 from ..electrochemistry import boltzmann_cosh_rates
-from ..rates import CalciumDependentFn, VoltageOnlyFn
-from ..utils import safe_cosh, safe_exp
+from ..rates import Const, Exp, ExpLinear, Hill, Max, Sech, Sigmoid, inf_tau
 from .base import (
     GatingVariable,
     GoldmanSpec,
@@ -48,119 +47,24 @@ __all__ = [
 ]
 
 
-def _alpha_r_impl(V: float, ca_i: float) -> float:
-    """Forward rate for Ih gating variable r (Destexhe-style HCN kinetics).
-
-    The Ih current is activated by hyperpolarization; alpha_r increases as
-    membrane voltage becomes more negative.
-
-    Args:
-        V: Membrane voltage in mV.
-        ca_i: Intracellular Ca²⁺ concentration in mM (ignored).
-
-    Returns:
-        Forward rate alpha_r in 1/ms.
-    """
-    return safe_exp(-14.59 - 0.086 * V)
-
-
-_alpha_r = VoltageOnlyFn(_alpha_r_impl)
-
-
-def _beta_r_impl(V: float, ca_i: float) -> float:
-    """Backward rate for Ih gating variable r (Destexhe-style HCN kinetics).
-
-    Args:
-        V: Membrane voltage in mV.
-        ca_i: Intracellular Ca²⁺ concentration in mM (ignored).
-
-    Returns:
-        Backward rate beta_r in 1/ms.
-    """
-    return safe_exp(-1.87 + 0.0701 * V)
-
-
-_beta_r = VoltageOnlyFn(_beta_r_impl)
-
+# Ih gating variable r (Destexhe-style HCN kinetics).  Ih is activated by
+# hyperpolarization: alpha_r = exp(−14.59 − 0.086 V) grows as V becomes more
+# negative, and beta_r = exp(−1.87 + 0.0701 V).  exp(a + b V) is written as
+# Exp(1, vh, s) with s = 1 / b and vh = −a / b.
+_alpha_r = Exp(1.0, 14.59 / -0.086, 1.0 / -0.086)
+_beta_r = Exp(1.0, 1.87 / 0.0701, 1.0 / 0.0701)
 
 _SINGULARITY_TOL: float = 1e-7
 
-
-def _alpha_a_impl(V: float, ca_i: float) -> float:
-    """Forward rate for IKa activation gating variable a (Traub & Miles 1991).
-
-    Uses a Boltzmann-style rate shifted to the absolute voltage convention
-    (-65 mV resting).  A singularity guard replaces the 0/0 form at
-    V = -51.9 mV with the analytic limit.
-
-    Args:
-        V: Membrane voltage in mV.
-        ca_i: Intracellular Ca²⁺ concentration in mM (ignored).
-
-    Returns:
-        Forward rate alpha_a in 1/ms.
-    """
-    x = -51.9 - V
-    if abs(x) < _SINGULARITY_TOL:
-        return 0.02 * 10.0  # L'Hôpital limit: coefficient * denominator scale
-    return 0.02 * x / (safe_exp(x / 10.0) - 1.0)
-
-
-_alpha_a = VoltageOnlyFn(_alpha_a_impl)
-
-
-def _beta_a_impl(V: float, ca_i: float) -> float:
-    """Backward rate for IKa activation gating variable a (Traub & Miles 1991).
-
-    A singularity guard replaces the 0/0 form at V = -24.9 mV with the
-    analytic limit.
-
-    Args:
-        V: Membrane voltage in mV.
-        ca_i: Intracellular Ca²⁺ concentration in mM (ignored).
-
-    Returns:
-        Backward rate beta_a in 1/ms.
-    """
-    x = V + 24.9
-    if abs(x) < _SINGULARITY_TOL:
-        return 0.0175 * 10.0  # L'Hôpital limit
-    return 0.0175 * x / (safe_exp(x / 10.0) - 1.0)
-
-
-_beta_a = VoltageOnlyFn(_beta_a_impl)
-
-
-def _alpha_b_impl(V: float, ca_i: float) -> float:
-    """Forward rate for IKa inactivation gating variable b (Traub & Miles 1991).
-
-    Args:
-        V: Membrane voltage in mV.
-        ca_i: Intracellular Ca²⁺ concentration in mM (ignored).
-
-    Returns:
-        Forward rate alpha_b in 1/ms.
-    """
-    return 0.0016 * safe_exp(-(V + 73.0) / 18.0)
-
-
-_alpha_b = VoltageOnlyFn(_alpha_b_impl)
-
-
-def _beta_b_impl(V: float, ca_i: float) -> float:
-    """Backward rate for IKa inactivation gating variable b (Traub & Miles 1991).
-
-    Args:
-        V: Membrane voltage in mV.
-        ca_i: Intracellular Ca²⁺ concentration in mM (ignored).
-
-    Returns:
-        Backward rate beta_b in 1/ms.
-    """
-    return 0.05 / (1.0 + safe_exp(-(V + 13.0) / 10.0))
-
-
-_beta_b = VoltageOnlyFn(_beta_b_impl)
+# IKa activation gate a and inactivation gate b (Traub & Miles 1991), in the
+# absolute voltage convention (−65 mV resting).  alpha_a and beta_a are
+# exp-linear rates with removable singularities at −51.9 mV and −24.9 mV,
+# where their analytic limits (0.2 and 0.175 per ms) are returned.
+_alpha_a = ExpLinear(0.02, -51.9, 10.0, tol=_SINGULARITY_TOL)
+# 0.0175 x / (exp(x / 10) − 1) is the mirrored exp-linear form.
+_beta_a = ExpLinear(-0.0175, -24.9, -10.0, tol=_SINGULARITY_TOL)
+_alpha_b = Exp(0.0016, -73.0, -18.0)
+_beta_b = Sigmoid(0.05, -13.0, 10.0)
 
 
 def make_ika_channel(
@@ -409,73 +313,16 @@ _alpha_s, _beta_s = boltzmann_cosh_rates(
 )
 
 
-def _nar_hr_inf(V: float) -> float:
-    """Steady-state unblocking variable hr of INaR at voltage V.
-
-    High at hyperpolarized potentials (channel unblocked), low at depolarized
-    potentials (channel blocked).  Half-point at -55.0 mV.
-
-    Args:
-        V: Membrane voltage in mV.
-
-    Returns:
-        Steady-state unblocking probability in [0, 1].
-    """
-    return 1.0 / (1.0 + safe_exp((V - _NAR_HR_HALF) / _NAR_HR_SLOPE))
-
-
-def _nar_tau_hr(V: float) -> float:
-    """Asymmetric voltage-dependent time constant for INaR unblocking variable hr.
-
-    Slow at depolarized potentials (slow blocking), intermediate at
-    hyperpolarized potentials (faster unblocking).
-
-    Args:
-        V: Membrane voltage in mV.
-
-    Returns:
-        Time constant in ms.
-    """
-    return (
-        _NAR_HR_TAU_A / (1.0 + safe_exp(-(V - _NAR_HR_TAU_HALF) / _NAR_HR_TAU_SLOPE))
-        + _NAR_HR_TAU_OFFSET
-    )
-
-
-def _alpha_hr_impl(V: float, ca_i: float) -> float:
-    """Forward rate for INaR unblocking gating variable hr.
-
-    Derived as alpha_hr = hr_inf / tau_hr.
-
-    Args:
-        V: Membrane voltage in mV.
-        ca_i: Intracellular Ca²⁺ concentration in mM (ignored).
-
-    Returns:
-        Forward rate alpha_hr in 1/ms.
-    """
-    return _nar_hr_inf(V) / _nar_tau_hr(V)
-
-
-_alpha_hr = VoltageOnlyFn(_alpha_hr_impl)
-
-
-def _beta_hr_impl(V: float, ca_i: float) -> float:
-    """Backward rate for INaR unblocking gating variable hr.
-
-    Derived as beta_hr = (1 - hr_inf) / tau_hr.
-
-    Args:
-        V: Membrane voltage in mV.
-        ca_i: Intracellular Ca²⁺ concentration in mM (ignored).
-
-    Returns:
-        Backward rate beta_hr in 1/ms.
-    """
-    return (1.0 - _nar_hr_inf(V)) / _nar_tau_hr(V)
-
-
-_beta_hr = VoltageOnlyFn(_beta_hr_impl)
+# INaR unblocking variable hr.  Its steady state is high at hyperpolarized
+# potentials (channel unblocked) and low at depolarized potentials (blocked),
+# with a half-point at −55 mV.  Its time constant is asymmetric: slow at
+# depolarized potentials (slow blocking) and faster at hyperpolarized ones
+# (faster unblocking).
+_alpha_hr, _beta_hr = inf_tau(
+    inf=Sigmoid(1.0, _NAR_HR_HALF, -_NAR_HR_SLOPE),
+    tau=Sigmoid(_NAR_HR_TAU_A, _NAR_HR_TAU_HALF, _NAR_HR_TAU_SLOPE)
+    + _NAR_HR_TAU_OFFSET,
+)
 
 
 def make_inar_channel(
@@ -687,73 +534,18 @@ _IKCA_TAU_COSH_SCALE: float = 20.0  # Voltage scale in cosh denominator in mV
 _IKCA_TAU_FLOOR: float = 1.0  # Minimum time constant in ms
 
 
-def _ikca_q_inf(V: float, ca_i: float) -> float:
-    """Steady-state activation of IKCa at voltage V and [Ca²⁺]ᵢ.
-
-    Combines a linear Hill function (n=1, K_d=0.001 mM) with a Boltzmann
-    voltage factor.  Zero calcium gives zero activation regardless of voltage.
-
-    Args:
-        V: Membrane voltage in mV.
-        ca_i: Intracellular Ca²⁺ concentration in mM.
-
-    Returns:
-        Steady-state open probability in [0, 1].
-    """
-    hill = ca_i / (ca_i + _IKCA_HILL_KD)
-    boltzmann = 1.0 / (1.0 + safe_exp(-(V - _IKCA_V_HALF) / _IKCA_V_SLOPE))
-    return hill * boltzmann
-
-
-def _ikca_tau(V: float) -> float:
-    """Voltage-dependent time constant for IKCa gating variable q.
-
-    Uses a cosh-based expression with a floor to prevent near-zero values.
-
-    Args:
-        V: Membrane voltage in mV.
-
-    Returns:
-        Time constant in ms (floored at 1 ms).
-    """
-    tau = _IKCA_TAU_SCALE / safe_cosh((V - _IKCA_V_HALF) / _IKCA_TAU_COSH_SCALE)
-    return max(tau, _IKCA_TAU_FLOOR)
-
-
-def _alpha_q_impl(V: float, ca_i: float) -> float:
-    """Forward rate for IKCa gating variable q.
-
-    Derived as alpha_q = q_inf(V, ca_i) / tau(V).
-
-    Args:
-        V: Membrane voltage in mV.
-        ca_i: Intracellular Ca²⁺ concentration in mM.
-
-    Returns:
-        Forward rate alpha_q in 1/ms.
-    """
-    return _ikca_q_inf(V, ca_i) / _ikca_tau(V)
-
-
-_alpha_q = CalciumDependentFn(_alpha_q_impl)
-
-
-def _beta_q_impl(V: float, ca_i: float) -> float:
-    """Backward rate for IKCa gating variable q.
-
-    Derived as beta_q = (1 - q_inf(V, ca_i)) / tau(V).
-
-    Args:
-        V: Membrane voltage in mV.
-        ca_i: Intracellular Ca²⁺ concentration in mM.
-
-    Returns:
-        Backward rate beta_q in 1/ms.
-    """
-    return (1.0 - _ikca_q_inf(V, ca_i)) / _ikca_tau(V)
-
-
-_beta_q = CalciumDependentFn(_beta_q_impl)
+# IKCa gating variable q.  Its steady state is a linear Hill function of
+# [Ca²⁺]ᵢ (n = 1, K_d = 0.001 mM) times a Boltzmann voltage factor, so zero
+# calcium gives zero activation at any voltage.  Its time constant is a cosh
+# expression floored at 1 ms to prevent near-zero values.
+_ikca_q_inf = Hill(_IKCA_HILL_KD, 1) * Sigmoid(1.0, _IKCA_V_HALF, _IKCA_V_SLOPE)
+_alpha_q, _beta_q = inf_tau(
+    inf=_ikca_q_inf,
+    tau=Max(
+        Sech(_IKCA_TAU_SCALE, _IKCA_V_HALF, _IKCA_TAU_COSH_SCALE),
+        Const(_IKCA_TAU_FLOOR),
+    ),
+)
 
 
 def make_ikca_channel(
@@ -966,57 +758,10 @@ _SK_HILL_N: int = 4
 _SK_TAU: float = 10.0  # Time constant in ms
 
 
-def _sk_q_inf(ca_i: float) -> float:
-    """Steady-state activation of the SK gating variable at [Ca²⁺]_i.
-
-    Hill function with K_d = 0.3 µM and Hill coefficient n = 4.  No voltage
-    dependence — SK is purely Ca²⁺-gated.
-
-    Args:
-        ca_i: Intracellular Ca²⁺ concentration in mM.
-
-    Returns:
-        Steady-state open probability in [0, 1].
-    """
-    ca_n = ca_i**_SK_HILL_N
-    kd_n = _SK_HILL_KD**_SK_HILL_N
-    return ca_n / (ca_n + kd_n)
-
-
-def _alpha_qSK_impl(V: float, ca_i: float) -> float:
-    """Forward rate for the SK gating variable.
-
-    Derived as ``alpha = q_inf(ca_i) / tau``.  Voltage independent.
-
-    Args:
-        V: Membrane voltage in mV (ignored).
-        ca_i: Intracellular Ca²⁺ concentration in mM.
-
-    Returns:
-        Forward rate in 1/ms.
-    """
-    return _sk_q_inf(ca_i) / _SK_TAU
-
-
-_alpha_qSK = CalciumDependentFn(_alpha_qSK_impl)
-
-
-def _beta_qSK_impl(V: float, ca_i: float) -> float:
-    """Backward rate for the SK gating variable.
-
-    Derived as ``beta = (1 - q_inf(ca_i)) / tau``.  Voltage independent.
-
-    Args:
-        V: Membrane voltage in mV (ignored).
-        ca_i: Intracellular Ca²⁺ concentration in mM.
-
-    Returns:
-        Backward rate in 1/ms.
-    """
-    return (1.0 - _sk_q_inf(ca_i)) / _SK_TAU
-
-
-_beta_qSK = CalciumDependentFn(_beta_qSK_impl)
+# SK gating variable: a Hill function of [Ca²⁺]ᵢ (K_d = 0.3 µM, n = 4) with a
+# fixed 10 ms time constant.  SK is purely Ca²⁺-gated, so the rates do not
+# depend on voltage.
+_alpha_qSK, _beta_qSK = inf_tau(Hill(_SK_HILL_KD, _SK_HILL_N), _SK_TAU)
 
 
 def make_sk_channel(
