@@ -28,6 +28,7 @@ from neuroclamp.channels import (
     NernstSpec,
 )
 from neuroclamp.channels.base import _CA_NERNST_FLOOR
+from neuroclamp.clamp_simulations import _clip_state
 from neuroclamp.electrochemistry import nernst_potential
 from neuroclamp.rates import (
     Const,
@@ -36,6 +37,7 @@ from neuroclamp.rates import (
     Hill,
     InfTauAlpha,
     InfTauBeta,
+    Max,
     Rate,
     Sigmoid,
     VoltageOnlyFn,
@@ -204,7 +206,7 @@ def _channel(
     )
 
 
-def _gate(name: str, alpha: Rate, beta: Rate, power: int = 1) -> GatingVariable:
+def _gate(name: str, alpha: Rate, beta: Rate, power: float = 1) -> GatingVariable:
     """Build a test gating variable.
 
     Args:
@@ -216,7 +218,7 @@ def _gate(name: str, alpha: Rate, beta: Rate, power: int = 1) -> GatingVariable:
     Returns:
         The gate.
     """
-    return GatingVariable(name=name, power=power, alpha=alpha, beta=beta)
+    return GatingVariable(name=name, power=power, alpha=alpha, beta=beta)  # ty: ignore[invalid-argument-type]
 
 
 @pytest.mark.parametrize(("key", "factory"), PRESETS, ids=PRESET_IDS)
@@ -335,6 +337,77 @@ def test_hill_coefficient_is_an_integer() -> None:
         lower_expr(Hill(3e-4, 2.5))  # ty: ignore[invalid-argument-type]
 
 
+@pytest.mark.parametrize("n", [math.inf, math.nan])
+def test_non_finite_hill_coefficient_is_rejected(n) -> None:
+    """An infinite or NaN Hill coefficient raises ``UnloweredRateError``.
+
+    Args:
+        n: The non-finite coefficient.
+    """
+    if math.isnan(n):
+        # ``Hill`` rejects NaN itself, so bypass its validation.
+        hill = object.__new__(Hill)
+        object.__setattr__(hill, "kd", 3e-4)
+        object.__setattr__(hill, "n", n)
+    else:
+        hill = Hill(3e-4, n)
+    with pytest.raises(UnloweredRateError, match="not finite"):
+        lower_expr(hill)
+
+
+def test_non_integer_gate_power_is_rejected_with_its_location() -> None:
+    """A fractional power would be truncated by the integer spec, so it raises."""
+    neuron = Neuron(
+        channels=(_channel("Kx", (_gate("h", Const(0.1), Const(0.2), 1.5),)),)
+    )
+    with pytest.raises(UnloweredRateError, match="channel 'Kx', gate 'h'.*power"):
+        lower(neuron)
+
+
+def test_whole_float_gate_power_lowers_as_an_int() -> None:
+    """A power of ``3.0`` is emitted as the integer ``3``."""
+    neuron = Neuron(
+        channels=(_channel("Kx", (_gate("n", Const(0.1), Const(0.2), 3.0),)),)
+    )
+    power = lower(neuron)["channels"][0]["gates"][0][1]
+    assert power == 3
+    assert isinstance(power, int)
+
+
+@pytest.mark.parametrize("power", [math.inf, math.nan])
+def test_non_finite_gate_power_is_rejected(power) -> None:
+    """An infinite or NaN gate power raises ``UnloweredRateError``.
+
+    Args:
+        power: The non-finite power.
+    """
+    neuron = Neuron(
+        channels=(_channel("Kx", (_gate("h", Const(0.1), Const(0.2), power),)),)
+    )
+    with pytest.raises(UnloweredRateError, match="whole number"):
+        lower(neuron)
+
+
+@pytest.mark.parametrize("value", [math.inf, -math.inf, math.nan])
+def test_non_finite_expression_parameter_is_rejected(value) -> None:
+    """Non-finite parameters cannot be written as strict JSON, so they raise.
+
+    Args:
+        value: The non-finite parameter.
+    """
+    with pytest.raises(UnloweredRateError, match="not finite"):
+        lower_expr(Max(Exp(1.0, -60.0, 10.0), Const(value)))
+
+
+def test_non_finite_neuron_constant_is_rejected() -> None:
+    """A non-finite conductance raises ``ValueError`` naming the channel."""
+    channel = _channel("Kx", (_gate("n", Const(0.1), Const(0.2)),))
+    object.__setattr__(channel, "g_max", math.inf)
+    neuron = Neuron(channels=(channel,))
+    with pytest.raises(ValueError, match="'Kx' g_max"):
+        lower(neuron)
+
+
 def test_callable_adapter_is_rejected_with_its_location() -> None:
     """A plain-callable rate cannot be lowered; the error names channel and gate."""
     opaque = VoltageOnlyFn(lambda v, ca: 0.1)
@@ -419,7 +492,9 @@ def test_calcium_blocks_reproduce_e_ca_and_dynamics() -> None:
             * 1000
             * math.log(nernst["ca_out"] / max(ca, nernst["floor_mm"]))
         )
-        assert got == expected
+        # ``nernst_potential`` uses ``np.log``, whose SIMD paths may round
+        # differently from libm's ``math.log`` in the last bit.
+        assert got == pytest.approx(expected, rel=1e-15, abs=0.0)
         i_ca = -3.0
         assert -dynamics["alpha_ca"] * i_ca - (ca - dynamics["ca_rest"]) / dynamics[
             "tau_ca"
@@ -431,3 +506,12 @@ def test_numerical_bounds_match_the_integrator() -> None:
     spec = lower(nc.NEURON_PRESETS["Squid Giant Axon (Classic HH)"]())
     assert spec["exp_clip"] == SAFE_EXP_CLIP_MAX == -SAFE_EXP_CLIP_MIN == SAFE_COSH_CLIP
     assert spec["v_clamp_mv"] == [-150.0, 150.0]
+
+
+def test_state_bounds_match_the_integrator() -> None:
+    """``gate_bounds`` and ``ca_floor_mm`` reproduce the integrator's clipping."""
+    spec = lower(nc.NEURON_PRESETS["Squid Giant Axon (Classic HH)"]())
+    lo, hi = spec["gate_bounds"]
+    state = {"a": -0.25, "b": 0.5, "c": 1.25}
+    assert _clip_state(state) == {k: max(lo, min(hi, x)) for k, x in state.items()}
+    assert spec["ca_floor_mm"] == 0.0

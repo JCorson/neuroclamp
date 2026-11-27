@@ -19,6 +19,8 @@ Format (version :data:`SPEC_VERSION`)::
       "phi": 1.0,                      # Q10 factor multiplying every rate
       "exp_clip": 100.0,               # |x| bound for exp and cosh arguments
       "v_clamp_mv": [-150.0, 150.0],   # voltage bounds at every RK4 sub-step
+      "gate_bounds": [0.0, 1.0],       # gate bounds after every full RK4 step
+      "ca_floor_mm": 0.0,              # Ca²⁺ floor after every full RK4 step
       "gates": [
         {"name": "m", "uses_calcium": false,
          "kinetics": {"form": "alpha_beta", "alpha": EXPR, "beta": EXPR}},
@@ -49,7 +51,18 @@ fields of the :mod:`neuroclamp.rates` class of the same name:
 A gate whose rates are the pair built by :func:`~neuroclamp.rates.inf_tau`
 lowers to the ``inf_tau`` form, so a backend evaluates ``inf`` and ``tau``
 once for both rates: ``alpha = inf / tau`` and ``beta = (1 - inf) / tau``.
-Each gate obeys ``dx/dt = phi * (alpha * (1 - x) - beta * x)``.
+Each gate obeys ``dx/dt = phi * (alpha * (1 - x) - beta * x)``.  The two
+clamp modes of the Python integrator round this differently, and a backend
+that must match Python to the last bit follows the same order:
+
+- Current clamp: ``phi * (alpha * (1 - x) - beta * x)``.
+- Voltage clamp: ``(phi * alpha) * (1 - x) - (phi * beta) * x``, with
+  ``phi * alpha`` and ``phi * beta`` each rounded first.
+
+The state advances by classic RK4.  In current clamp, the voltage passed to
+each intermediate stage is clamped to ``v_clamp_mv``.  After each full step,
+every gate is clipped to ``gate_bounds`` and Ca²⁺ is floored at
+``ca_floor_mm``; the intermediate stages are not clipped.
 
 A channel's current is ``g_max * prod(x_i ** p_i) * (V - E)``.  ``gates``
 lists ``[index into "gates", power]`` pairs.  ``e_rev`` is fixed for
@@ -59,18 +72,24 @@ this order: ``(gas_constant * temperature_k / (2 * faraday)) * 1000 *
 ln(ca_out / max(ca_i, floor_mm))``.  ``calcium_nernst`` is present exactly when
 some channel carries Ca²⁺.  ``calcium_dynamics`` is ``null`` when Ca²⁺ is
 held constant, and otherwise gives
-``d[Ca]/dt = -alpha_ca * I_Ca - (ca_i - ca_rest) / tau_ca``.
+``d[Ca]/dt = -alpha_ca * I_Ca - (ca_i - ca_rest) / tau_ca``.  With
+``calcium_dynamics`` null, Ca²⁺ stays at the initial value passed with the
+state; the Python integrator starts it at the neuron's ``Ca_in``.
+
+Every number in the spec is finite, so the spec is strict JSON.
 
 Only the built-in expression forms can be lowered.  A gate that uses a plain
 callable adapter (:class:`~neuroclamp.rates.VoltageOnlyFn`,
 :class:`~neuroclamp.rates.CalciumDependentFn`), a custom
 :class:`~neuroclamp.rates.Rate`, or a subclass of a built-in form makes
 :func:`lower` raise :class:`UnloweredRateError`; such neurons run only on the
-Python backend.
+Python backend.  A whole-number gate power or Hill coefficient is required
+for the same reason: the spec stores both as integers.
 """
 
 from __future__ import annotations
 
+import math
 from dataclasses import fields
 from typing import Any
 
@@ -132,13 +151,20 @@ def lower_expr(rate: Rate) -> dict[str, Any]:
 
     Raises:
         UnloweredRateError: If the rate, or any node inside it, is not one of
-            the built-in expression forms.
+            the built-in expression forms, has a non-finite parameter, or is a
+            ``Hill`` whose coefficient is not a whole number.
     """
     cls = type(rate)
     if cls in _LEAF_OPS:
         node: dict[str, Any] = {"op": cls.__name__}
         for f in fields(rate):  # ty: ignore[invalid-argument-type]
-            node[f.name] = float(getattr(rate, f.name))
+            value = float(getattr(rate, f.name))
+            if not math.isfinite(value):
+                raise UnloweredRateError(
+                    f"{cls.__name__}.{f.name} = {value!r} is not finite and"
+                    " cannot be lowered to strict JSON"
+                )
+            node[f.name] = value
         if isinstance(rate, Hill):
             node["n"] = _integer_hill_coefficient(rate.n)
         return node
@@ -159,6 +185,31 @@ def lower_expr(rate: Rate) -> dict[str, Any]:
     )
 
 
+def _whole_number(value: float, what: str) -> int:
+    """Return a value the spec stores as an integer, checking that it is one.
+
+    Args:
+        value: The number, such as a Hill coefficient or a gate power.
+        what: Its description for the error message.
+
+    Returns:
+        ``value`` as an ``int``.
+
+    Raises:
+        UnloweredRateError: If ``value`` is a bool, infinite, NaN, or not a
+            whole number.
+    """
+    if (
+        isinstance(value, bool)
+        or not math.isfinite(value)
+        or float(value) != int(value)
+    ):
+        raise UnloweredRateError(
+            f"{what} {value!r} is not a whole number and cannot be lowered"
+        )
+    return int(value)
+
+
 def _integer_hill_coefficient(n: float) -> int:
     """Return a Hill coefficient as an ``int``, as the spec requires.
 
@@ -171,11 +222,27 @@ def _integer_hill_coefficient(n: float) -> int:
     Raises:
         UnloweredRateError: If ``n`` is not a whole number.
     """
-    if isinstance(n, bool) or float(n) != int(n):
-        raise UnloweredRateError(
-            f"Hill coefficient {n!r} is not a whole number and cannot be lowered"
-        )
-    return int(n)
+    return _whole_number(n, "Hill coefficient")
+
+
+def _finite(value: float, what: str) -> float:
+    """Return a neuron scalar as a ``float``, checking that it is finite.
+
+    Args:
+        value: The scalar.
+        what: Its description for the error message.
+
+    Returns:
+        ``value`` as a ``float``.
+
+    Raises:
+        ValueError: If ``value`` is infinite or NaN, which strict JSON cannot
+            represent.
+    """
+    result = float(value)
+    if not math.isfinite(result):
+        raise ValueError(f"{what} = {result!r} is not finite and cannot be lowered")
+    return result
 
 
 def _lower_kinetics(gate: GatingVariable) -> dict[str, Any]:
@@ -216,10 +283,13 @@ def lower(neuron: Neuron) -> dict[str, Any]:
 
     Raises:
         UnloweredRateError: If any gate's rate is not built from the standard
-            expression forms.  The message names the channel and gate.
-        ValueError: If two channels have gates with the same name.  The
-            Python integrator keys gate state by name, so such gates would
-            share one state variable, which the spec cannot express.
+            expression forms, or a gate's power is not a whole number.  The
+            message names the channel and gate.
+        ValueError: If two channels have gates with the same name (the Python
+            integrator keys gate state by name, so such gates would share one
+            state variable, which the spec cannot express), or if a
+            conductance, reversal potential, or other neuron constant is not
+            finite.
     """
     names = [gate.name for gate in neuron.all_gating_variables]
     duplicates = sorted({name for name in names if names.count(name) > 1})
@@ -230,13 +300,14 @@ def lower(neuron: Neuron) -> dict[str, Any]:
     for channel in neuron.channels:
         channel_gates.append([])
         for gate in channel.gating_variables:
-            channel_gates[-1].append([len(gate_specs), int(gate.power)])
             try:
+                power = _whole_number(gate.power, "gate power")
                 kinetics = _lower_kinetics(gate)
             except UnloweredRateError as err:
                 raise UnloweredRateError(
                     f"channel {channel.name!r}, gate {gate.name!r}: {err}"
                 ) from err
+            channel_gates[-1].append([len(gate_specs), power])
             gate_specs.append(
                 {
                     "name": gate.name,
@@ -248,26 +319,30 @@ def lower(neuron: Neuron) -> dict[str, Any]:
     cd = neuron.calcium_dynamics
     return {
         "version": SPEC_VERSION,
-        "c_m": float(neuron.C_m),
-        "phi": float(neuron.q10_factor),
+        "c_m": _finite(neuron.C_m, "C_m"),
+        "phi": _finite(neuron.q10_factor, "q10_factor"),
         "exp_clip": float(SAFE_EXP_CLIP_MAX),
         "v_clamp_mv": [float(_V_CLAMP_MIN), float(_V_CLAMP_MAX)],
+        "gate_bounds": [0.0, 1.0],
+        "ca_floor_mm": 0.0,
         "gates": gate_specs,
         "channels": [
             {
                 "name": ch.name,
-                "g_max": float(ch.g_max),
+                "g_max": _finite(ch.g_max, f"channel {ch.name!r} g_max"),
                 "gates": gates,
                 "carries_calcium": ch.carries_calcium,
                 "e_rev": None
                 if ch.carries_calcium
-                else float(neuron.reversal_potentials[ch.name]),
+                else _finite(
+                    neuron.reversal_potentials[ch.name], f"channel {ch.name!r} e_rev"
+                ),
             }
             for ch, gates in zip(neuron.channels, channel_gates, strict=True)
         ],
         "calcium_nernst": {
-            "ca_out": float(neuron.Ca_out),
-            "temperature_k": float(neuron.T),
+            "ca_out": _finite(neuron.Ca_out, "Ca_out"),
+            "temperature_k": _finite(neuron.T, "T"),
             "floor_mm": _CA_NERNST_FLOOR,
             "gas_constant": R,
             "faraday": float(F),
@@ -277,8 +352,8 @@ def lower(neuron: Neuron) -> dict[str, Any]:
         "calcium_dynamics": None
         if cd is None
         else {
-            "alpha_ca": float(cd.alpha_ca),
-            "tau_ca": float(cd.tau_ca),
-            "ca_rest": float(cd.ca_rest),
+            "alpha_ca": _finite(cd.alpha_ca, "alpha_ca"),
+            "tau_ca": _finite(cd.tau_ca, "tau_ca"),
+            "ca_rest": _finite(cd.ca_rest, "ca_rest"),
         },
     }
