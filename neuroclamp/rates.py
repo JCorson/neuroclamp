@@ -26,6 +26,7 @@ from abc import ABC, abstractmethod
 from collections.abc import Callable
 from dataclasses import dataclass
 from numbers import Real
+from typing import cast
 
 from .utils import safe_cosh, safe_exp
 
@@ -190,6 +191,73 @@ class Expr(Rate):
             The child rates; empty for leaf forms.
         """
         return ()
+
+    @abstractmethod
+    def evaluate(self, V: float, ca_i: float) -> float:
+        """Evaluate this node directly from its definition.
+
+        This is the readable reference implementation of each form.  Calling
+        the expression runs an equivalent compiled function instead (see
+        :meth:`__call__`), which performs the same operations in the same
+        order and so returns identical results.
+
+        Args:
+            V: Membrane voltage in mV.
+            ca_i: Intracellular Ca²⁺ concentration in mM.
+
+        Returns:
+            The value of the expression.
+        """
+
+    def __call__(self, V: float, ca_i: float) -> float:
+        """Evaluate the expression through its compiled function.
+
+        On first use the whole tree is translated into one flat Python
+        function, cached on this instance.  Walking the tree node by node
+        costs a Python call per node; the compiled function evaluates the
+        same arithmetic with none of that overhead, so expressions run as
+        fast as hand-written rate functions.
+
+        Args:
+            V: Membrane voltage in mV.
+            ca_i: Intracellular Ca²⁺ concentration in mM.
+
+        Returns:
+            The value of the expression.
+        """
+        compiled = self.__dict__.get("_compiled")
+        if compiled is None:
+            compiled = _compile(self)
+            object.__setattr__(self, "_compiled", compiled)
+        return compiled(V, ca_i)
+
+    def __getstate__(self) -> dict[str, object]:
+        """Return the pickled state, without the compiled-function cache.
+
+        The cached function cannot be pickled; it is rebuilt on first use
+        after unpickling.
+
+        Returns:
+            The instance dictionary minus the cache.
+        """
+        state = dict(self.__dict__)
+        state.pop("_compiled", None)
+        return state
+
+    def _source(self, emit: "_Emitter") -> str:
+        """Return Python source evaluating this node, for :func:`_compile`.
+
+        The default calls :meth:`evaluate` on the node, so an ``Expr``
+        subclass defined outside this module only needs ``evaluate``.  The
+        built-in forms override this with inline arithmetic.
+
+        Args:
+            emit: Collects the names the generated source refers to.
+
+        Returns:
+            A Python expression in ``V`` and ``ca_i``.
+        """
+        return f"{emit.rate(self.evaluate)}(V, ca_i)"
 
     @property
     def uses_calcium(self) -> bool:
@@ -372,6 +440,123 @@ def _check_scale(s: float) -> None:
         raise ValueError("voltage scale s must be nonzero")
 
 
+def _ref(rate: Rate, V: float, ca_i: float) -> float:
+    """Evaluate an operand on the reference path.
+
+    Expressions use :meth:`Expr.evaluate`, so a reference evaluation of a tree
+    never touches the compiled functions; any other rate is called directly.
+
+    Args:
+        rate: The operand.
+        V: Membrane voltage in mV.
+        ca_i: Intracellular Ca²⁺ concentration in mM.
+
+    Returns:
+        The operand's value.
+    """
+    return rate.evaluate(V, ca_i) if isinstance(rate, Expr) else rate(V, ca_i)
+
+
+class _Emitter:
+    """Collects the names that an expression's generated source refers to.
+
+    Parameter values are never written into the source text.  Each constant,
+    opaque rate, and helper is bound to a generated name (``_c0``, ``_r1``,
+    ...) and passed to the compiled function as a keyword-only default, which
+    makes it a fast local variable and means the source contains only
+    generated identifiers and operators, whatever values a node holds.
+    """
+
+    def __init__(self) -> None:
+        """Start with the helper functions every expression may use."""
+        self.values: dict[str, object] = {
+            "_safe_exp": safe_exp,
+            "_safe_cosh": safe_cosh,
+            "_max": max,
+        }
+        self._temps = 0
+
+    def _bind(self, prefix: str, value: object) -> str:
+        """Bind a value to a fresh name.
+
+        Args:
+            prefix: Name prefix (``_c`` for constants, ``_r`` for rates).
+            value: The value the name refers to.
+
+        Returns:
+            The generated name.
+        """
+        name = f"{prefix}{len(self.values)}"
+        self.values[name] = value
+        return name
+
+    def const(self, value: float) -> str:
+        """Bind a numeric parameter.
+
+        Args:
+            value: The parameter value.
+
+        Returns:
+            The generated name.
+        """
+        return self._bind("_c", value)
+
+    def rate(self, fn: Callable[[float, float], float]) -> str:
+        """Bind a rate that is called as an opaque function.
+
+        Args:
+            fn: A ``(V, ca_i) -> float`` callable.
+
+        Returns:
+            The generated name.
+        """
+        return self._bind("_r", fn)
+
+    def temp(self) -> str:
+        """Allocate a name for an intermediate value inside the source.
+
+        Returns:
+            The generated name.
+        """
+        self._temps += 1
+        return f"_t{self._temps}"
+
+    def source(self, rate: Rate) -> str:
+        """Return source evaluating an operand.
+
+        Args:
+            rate: An expression (inlined) or any other rate (called).
+
+        Returns:
+            A Python expression in ``V`` and ``ca_i``.
+        """
+        if isinstance(rate, Expr):
+            return rate._source(self)
+        return f"{self.rate(rate)}(V, ca_i)"
+
+
+def _compile(expr: "Expr") -> Callable[[float, float], float]:
+    """Translate an expression tree into one flat Python function.
+
+    The generated function performs the same operations, in the same order,
+    as :meth:`Expr.evaluate` on each node, so its results are identical.
+
+    Args:
+        expr: The expression to compile.
+
+    Returns:
+        A ``(V, ca_i) -> float`` function.
+    """
+    emit = _Emitter()
+    body = emit.source(expr)
+    defaults = ", ".join(f"{name}={name}" for name in emit.values)
+    source = f"def _rate(V, ca_i, *, {defaults}):\n    return {body}\n"
+    namespace = dict(emit.values)
+    # The source holds only generated names and operators (see _Emitter).
+    exec(source, namespace)
+    return cast("Callable[[float, float], float]", namespace["_rate"])
+
+
 @dataclass(frozen=True)
 class Const(Expr):
     """A constant value.
@@ -382,7 +567,7 @@ class Const(Expr):
 
     value: float
 
-    def __call__(self, V: float, ca_i: float) -> float:
+    def evaluate(self, V: float, ca_i: float) -> float:
         """Return the constant.
 
         Args:
@@ -393,6 +578,17 @@ class Const(Expr):
             :attr:`value`.
         """
         return self.value
+
+    def _source(self, emit: "_Emitter") -> str:
+        """Return inline source for the constant.
+
+        Args:
+            emit: Collects the names the generated source refers to.
+
+        Returns:
+            A Python expression in ``V`` and ``ca_i``.
+        """
+        return emit.const(self.value)
 
 
 @dataclass(frozen=True)
@@ -418,7 +614,7 @@ class Exp(Expr):
         """
         _check_scale(self.s)
 
-    def __call__(self, V: float, ca_i: float) -> float:
+    def evaluate(self, V: float, ca_i: float) -> float:
         """Evaluate the exponential (argument clipped by ``safe_exp``).
 
         Args:
@@ -429,6 +625,18 @@ class Exp(Expr):
             The value at ``V``.
         """
         return self.k * safe_exp((V - self.vh) / self.s)
+
+    def _source(self, emit: "_Emitter") -> str:
+        """Return inline source for the exponential.
+
+        Args:
+            emit: Collects the names the generated source refers to.
+
+        Returns:
+            A Python expression in ``V`` and ``ca_i``.
+        """
+        k, vh, s = emit.const(self.k), emit.const(self.vh), emit.const(self.s)
+        return f"({k} * _safe_exp((V - {vh}) / {s}))"
 
 
 @dataclass(frozen=True)
@@ -456,7 +664,7 @@ class Sigmoid(Expr):
         """
         _check_scale(self.s)
 
-    def __call__(self, V: float, ca_i: float) -> float:
+    def evaluate(self, V: float, ca_i: float) -> float:
         """Evaluate the sigmoid (argument clipped by ``safe_exp``).
 
         Args:
@@ -467,6 +675,18 @@ class Sigmoid(Expr):
             The value at ``V``.
         """
         return self.k / (1.0 + safe_exp(-(V - self.vh) / self.s))
+
+    def _source(self, emit: "_Emitter") -> str:
+        """Return inline source for the sigmoid.
+
+        Args:
+            emit: Collects the names the generated source refers to.
+
+        Returns:
+            A Python expression in ``V`` and ``ca_i``.
+        """
+        k, vh, s = emit.const(self.k), emit.const(self.vh), emit.const(self.s)
+        return f"({k} / (1.0 + _safe_exp(-(V - {vh}) / {s})))"
 
 
 @dataclass(frozen=True)
@@ -500,7 +720,7 @@ class ExpLinear(Expr):
         """
         _check_scale(self.s)
 
-    def __call__(self, V: float, ca_i: float) -> float:
+    def evaluate(self, V: float, ca_i: float) -> float:
         """Evaluate the exp-linear form.
 
         Args:
@@ -514,6 +734,23 @@ class ExpLinear(Expr):
         if abs(x) < self.tol:
             return self.k * self.s
         return self.k * x / (1.0 - safe_exp(-x / self.s))
+
+    def _source(self, emit: "_Emitter") -> str:
+        """Return inline source for the exp-linear form.
+
+        Args:
+            emit: Collects the names the generated source refers to.
+
+        Returns:
+            A Python expression in ``V`` and ``ca_i``.
+        """
+        k, vh, s = emit.const(self.k), emit.const(self.vh), emit.const(self.s)
+        tol, x = emit.const(self.tol), emit.temp()
+        # The condition runs first, so it binds x before either branch uses it.
+        return (
+            f"({k} * {s} if abs({x} := V - {vh}) < {tol}"
+            f" else {k} * {x} / (1.0 - _safe_exp(-{x} / {s})))"
+        )
 
 
 @dataclass(frozen=True)
@@ -540,7 +777,7 @@ class Sech(Expr):
         """
         _check_scale(self.s)
 
-    def __call__(self, V: float, ca_i: float) -> float:
+    def evaluate(self, V: float, ca_i: float) -> float:
         """Evaluate the secant (argument clipped by ``safe_cosh``).
 
         Args:
@@ -551,6 +788,18 @@ class Sech(Expr):
             The value at ``V``.
         """
         return self.k / safe_cosh((V - self.vh) / self.s)
+
+    def _source(self, emit: "_Emitter") -> str:
+        """Return inline source for the secant.
+
+        Args:
+            emit: Collects the names the generated source refers to.
+
+        Returns:
+            A Python expression in ``V`` and ``ca_i``.
+        """
+        k, vh, s = emit.const(self.k), emit.const(self.vh), emit.const(self.s)
+        return f"({k} / _safe_cosh((V - {vh}) / {s}))"
 
 
 @dataclass(frozen=True)
@@ -588,7 +837,7 @@ class Hill(Expr):
         """
         return True
 
-    def __call__(self, V: float, ca_i: float) -> float:
+    def evaluate(self, V: float, ca_i: float) -> float:
         """Evaluate the Hill function.
 
         Args:
@@ -600,6 +849,20 @@ class Hill(Expr):
         """
         ca_n = ca_i**self.n
         return ca_n / (ca_n + self.kd**self.n)
+
+    def _source(self, emit: "_Emitter") -> str:
+        """Return inline source for the Hill function.
+
+        Args:
+            emit: Collects the names the generated source refers to.
+
+        Returns:
+            A Python expression in ``V`` and ``ca_i``.
+        """
+        n, ca_n = emit.const(self.n), emit.temp()
+        # kd**n is the same constant on every call, so it is computed once.
+        kd_n = emit.const(self.kd**self.n)
+        return f"(({ca_n} := ca_i ** {n}) / ({ca_n} + {kd_n}))"
 
 
 @dataclass(frozen=True)
@@ -627,7 +890,7 @@ class _Binary(Expr):
 class Add(_Binary):
     """Sum of two expressions: ``a + b``."""
 
-    def __call__(self, V: float, ca_i: float) -> float:
+    def evaluate(self, V: float, ca_i: float) -> float:
         """Evaluate ``a + b``.
 
         Args:
@@ -637,14 +900,25 @@ class Add(_Binary):
         Returns:
             The sum.
         """
-        return self.a(V, ca_i) + self.b(V, ca_i)
+        return _ref(self.a, V, ca_i) + _ref(self.b, V, ca_i)
+
+    def _source(self, emit: "_Emitter") -> str:
+        """Return inline source for ``a + b``.
+
+        Args:
+            emit: Collects the names the generated source refers to.
+
+        Returns:
+            A Python expression in ``V`` and ``ca_i``.
+        """
+        return f"({emit.source(self.a)} + {emit.source(self.b)})"
 
 
 @dataclass(frozen=True)
 class Sub(_Binary):
     """Difference of two expressions: ``a − b``."""
 
-    def __call__(self, V: float, ca_i: float) -> float:
+    def evaluate(self, V: float, ca_i: float) -> float:
         """Evaluate ``a − b``.
 
         Args:
@@ -654,14 +928,25 @@ class Sub(_Binary):
         Returns:
             The difference.
         """
-        return self.a(V, ca_i) - self.b(V, ca_i)
+        return _ref(self.a, V, ca_i) - _ref(self.b, V, ca_i)
+
+    def _source(self, emit: "_Emitter") -> str:
+        """Return inline source for ``a − b``.
+
+        Args:
+            emit: Collects the names the generated source refers to.
+
+        Returns:
+            A Python expression in ``V`` and ``ca_i``.
+        """
+        return f"({emit.source(self.a)} - {emit.source(self.b)})"
 
 
 @dataclass(frozen=True)
 class Mul(_Binary):
     """Product of two expressions: ``a · b``."""
 
-    def __call__(self, V: float, ca_i: float) -> float:
+    def evaluate(self, V: float, ca_i: float) -> float:
         """Evaluate ``a · b``.
 
         Args:
@@ -671,14 +956,25 @@ class Mul(_Binary):
         Returns:
             The product.
         """
-        return self.a(V, ca_i) * self.b(V, ca_i)
+        return _ref(self.a, V, ca_i) * _ref(self.b, V, ca_i)
+
+    def _source(self, emit: "_Emitter") -> str:
+        """Return inline source for ``a · b``.
+
+        Args:
+            emit: Collects the names the generated source refers to.
+
+        Returns:
+            A Python expression in ``V`` and ``ca_i``.
+        """
+        return f"({emit.source(self.a)} * {emit.source(self.b)})"
 
 
 @dataclass(frozen=True)
 class Div(_Binary):
     """Quotient of two expressions: ``a / b``."""
 
-    def __call__(self, V: float, ca_i: float) -> float:
+    def evaluate(self, V: float, ca_i: float) -> float:
         """Evaluate ``a / b``.
 
         Args:
@@ -688,14 +984,25 @@ class Div(_Binary):
         Returns:
             The quotient.
         """
-        return self.a(V, ca_i) / self.b(V, ca_i)
+        return _ref(self.a, V, ca_i) / _ref(self.b, V, ca_i)
+
+    def _source(self, emit: "_Emitter") -> str:
+        """Return inline source for ``a / b``.
+
+        Args:
+            emit: Collects the names the generated source refers to.
+
+        Returns:
+            A Python expression in ``V`` and ``ca_i``.
+        """
+        return f"({emit.source(self.a)} / {emit.source(self.b)})"
 
 
 @dataclass(frozen=True)
 class Max(_Binary):
     """Larger of two expressions, e.g. a time constant with a floor."""
 
-    def __call__(self, V: float, ca_i: float) -> float:
+    def evaluate(self, V: float, ca_i: float) -> float:
         """Evaluate ``max(a, b)``.
 
         Args:
@@ -705,7 +1012,18 @@ class Max(_Binary):
         Returns:
             The larger operand.
         """
-        return max(self.a(V, ca_i), self.b(V, ca_i))
+        return max(_ref(self.a, V, ca_i), _ref(self.b, V, ca_i))
+
+    def _source(self, emit: "_Emitter") -> str:
+        """Return inline source for ``max(a, b)``.
+
+        Args:
+            emit: Collects the names the generated source refers to.
+
+        Returns:
+            A Python expression in ``V`` and ``ca_i``.
+        """
+        return f"_max({emit.source(self.a)}, {emit.source(self.b)})"
 
 
 @dataclass(frozen=True)
@@ -723,7 +1041,7 @@ class InfTauAlpha(_Binary):
         b: Time constant ``tau`` in ms.
     """
 
-    def __call__(self, V: float, ca_i: float) -> float:
+    def evaluate(self, V: float, ca_i: float) -> float:
         """Evaluate ``inf / tau``.
 
         Args:
@@ -733,7 +1051,18 @@ class InfTauAlpha(_Binary):
         Returns:
             The forward rate in 1/ms.
         """
-        return self.a(V, ca_i) / self.b(V, ca_i)
+        return _ref(self.a, V, ca_i) / _ref(self.b, V, ca_i)
+
+    def _source(self, emit: "_Emitter") -> str:
+        """Return inline source for ``inf / tau``.
+
+        Args:
+            emit: Collects the names the generated source refers to.
+
+        Returns:
+            A Python expression in ``V`` and ``ca_i``.
+        """
+        return f"({emit.source(self.a)} / {emit.source(self.b)})"
 
 
 @dataclass(frozen=True)
@@ -747,7 +1076,7 @@ class InfTauBeta(_Binary):
         b: Time constant ``tau`` in ms.
     """
 
-    def __call__(self, V: float, ca_i: float) -> float:
+    def evaluate(self, V: float, ca_i: float) -> float:
         """Evaluate ``(1 − inf) / tau``.
 
         Args:
@@ -757,7 +1086,18 @@ class InfTauBeta(_Binary):
         Returns:
             The backward rate in 1/ms.
         """
-        return (1.0 - self.a(V, ca_i)) / self.b(V, ca_i)
+        return (1.0 - _ref(self.a, V, ca_i)) / _ref(self.b, V, ca_i)
+
+    def _source(self, emit: "_Emitter") -> str:
+        """Return inline source for ``(1 − inf) / tau``.
+
+        Args:
+            emit: Collects the names the generated source refers to.
+
+        Returns:
+            A Python expression in ``V`` and ``ca_i``.
+        """
+        return f"((1.0 - {emit.source(self.a)}) / {emit.source(self.b)})"
 
 
 def inf_tau(inf: "Rate | float", tau: "Rate | float") -> tuple[InfTauAlpha, InfTauBeta]:

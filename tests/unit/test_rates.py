@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
+import copy
 import math
 import pickle
 from collections.abc import Callable
+from typing import cast
 
 import numpy as np
 import pytest
@@ -395,3 +397,134 @@ def test_hill_rejects_non_positive_parameters(kd: float, n: int) -> None:
     """
     with pytest.raises(ValueError, match="positive"):
         Hill(kd, n)
+
+
+# ---------------------------------------------------------------------------
+# Compiled evaluation
+# ---------------------------------------------------------------------------
+
+
+def _scaled_v(V: float, ca_i: float) -> float:
+    """A voltage-only rate written as a plain function.
+
+    Args:
+        V: Membrane voltage in mV.
+        ca_i: Intracellular Ca²⁺ concentration in mM (ignored).
+
+    Returns:
+        A rate that grows linearly with voltage.
+    """
+    return 0.01 * (V + 100.0)
+
+
+def _ca_rate(V: float, ca_i: float) -> float:
+    """A Ca²⁺-dependent rate written as a plain function.
+
+    Args:
+        V: Membrane voltage in mV (ignored).
+        ca_i: Intracellular Ca²⁺ concentration in mM.
+
+    Returns:
+        A rate proportional to ca_i.
+    """
+    return 50.0 * ca_i
+
+
+_COMPILED_CASES: list[Expr] = [
+    Const(0.3),
+    Exp(0.125, -65.0, -80.0),
+    Sigmoid(4.0, -40.0, 5.0),
+    ExpLinear(0.1, -40.0, 10.0),
+    ExpLinear(-0.28, -16.2, -5.0, tol=1e-7),
+    Sech(10.0, -20.0, 20.0),
+    Hill(0.0003, 4) * Sigmoid(1.0, -20.0, 10.0),
+    Max(Sech(200.0, -50.0, 16.0), Const(20.0)),
+    *inf_tau(
+        Sigmoid(1.0, -45.5, -6.4),
+        1.0 / (Exp(0.128, -38.0, -18.0) + Sigmoid(4.0, -15.0, 5.0)),
+    ),
+    *inf_tau(
+        Hill(0.001, 1) * Sigmoid(1.0, -20.0, 10.0),
+        Max(Sech(10.0, -20.0, 20.0), Const(1.0)),
+    ),
+    20.0 + Sigmoid(180.0, -50.0, 5.0) - 2 * Exp(1.0, -60.0, 30.0),
+    VoltageOnlyFn(_scaled_v) * Sigmoid(1.0, -40.0, 8.0) + CalciumDependentFn(_ca_rate),
+]
+
+
+@pytest.mark.parametrize("expr", _COMPILED_CASES, ids=lambda e: type(e).__name__)
+def test_compiled_evaluation_matches_the_reference_exactly(expr: Expr) -> None:
+    """Calling an expression gives exactly what ``evaluate`` gives.
+
+    The compiled function performs the same operations in the same order, so
+    results are compared for exact equality, including at the exp-linear
+    singular points.
+
+    Args:
+        expr: An expression to evaluate both ways.
+    """
+    voltages = [-120.0, -65.0, -55.0, -40.0, -16.2, -16.2 + 5e-8, 0.0, 40.0, 1e4]
+    for V in voltages:
+        for ca in (0.0, 5e-5, 3e-4, 1e-2):
+            assert expr(V, ca) == expr.evaluate(V, ca), (V, ca)
+
+
+def test_compiled_expressions_still_pickle_copy_and_compare() -> None:
+    """Compiling on first call leaves pickling, copying and equality intact."""
+    alpha, beta = inf_tau(
+        Sigmoid(1.0, -40.0, 8.0), Max(Sech(5.0, -40.0, 16.0), Const(0.1))
+    )
+    before = alpha(-30.0, 0.0)  # compiles and caches
+
+    restored = pickle.loads(pickle.dumps(alpha))
+    assert restored == alpha
+    assert hash(restored) == hash(alpha)
+    assert restored(-30.0, 0.0) == before
+    assert copy.deepcopy(beta)(-30.0, 0.0) == beta(-30.0, 0.0)
+    assert repr(alpha) == repr(restored)
+
+
+class _Doubled(Expr):
+    """An ``Expr`` subclass defined outside ``neuroclamp.rates``.
+
+    It implements only ``evaluate``, so the compiler calls it as a function.
+    """
+
+    def __init__(self, inner: Expr) -> None:
+        """Wrap an expression.
+
+        Args:
+            inner: The expression to double.
+        """
+        self.inner = inner
+
+    def evaluate(self, V: float, ca_i: float) -> float:
+        """Return twice the wrapped expression.
+
+        Args:
+            V: Membrane voltage in mV.
+            ca_i: Intracellular Ca²⁺ concentration in mM.
+
+        Returns:
+            Twice the inner value.
+        """
+        return 2.0 * self.inner(V, ca_i)
+
+
+def test_expr_subclasses_only_need_evaluate() -> None:
+    """A custom ``Expr`` that implements only ``evaluate`` compiles and combines."""
+    custom = _Doubled(Sigmoid(1.0, -40.0, 8.0))
+    assert custom(-40.0, 0.0) == pytest.approx(1.0)
+    assert (custom + 1.0)(-40.0, 0.0) == pytest.approx(2.0)
+
+
+def test_parameter_values_are_never_executed_as_code() -> None:
+    """Node parameters reach the compiled function as values, not source text.
+
+    A constant holding code-like text comes back unchanged instead of being
+    executed, and non-finite constants work as ordinary floats.
+    """
+    payload = "__import__('os').getcwd()"
+    assert Const(cast("float", payload))(-65.0, 0.0) == payload
+    assert math.isnan(Const(math.nan)(-65.0, 0.0))
+    assert Const(math.inf)(-65.0, 0.0) == math.inf
