@@ -23,9 +23,10 @@ listed under **Changed** or **Removed**.
   compiles to a single Python function on first use, so it runs as fast as a
   hand-written rate function. A custom `Expr` subclass only needs to define
   `evaluate()`.
-- `simulate_current_clamp()` and `simulate_current_clamp_from_state()` take
-  `backend="rust"` to run current clamp on a compiled Rust integrator,
-  typically 30 to 90 times faster, with the same result to within rounding.
+- `simulate_current_clamp()`, `simulate_voltage_clamp()` and their
+  `*_from_state()` variants take `backend="rust"` to run on a compiled Rust
+  integrator, typically 30 to 90 times faster, with the same result to within
+  rounding.
   The default stays `backend="python"`. Every gate must be built from rate
   expressions, as all built-in channels are.
 - `Rate.uses_calcium` reports whether a rate depends on intracellular Ca²⁺.
