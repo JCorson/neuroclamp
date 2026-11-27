@@ -11,15 +11,7 @@ Biol. Cybern. 99:427–441, Table 2 (TC cell).
 
 from ..constants import DEFAULT_G_ICAT
 from ..electrochemistry import boltzmann_cosh_rates
-from ..rates import VoltageOnlyFn
-from ._traub_miles import (
-    _traub_miles_alpha_h,
-    _traub_miles_alpha_m,
-    _traub_miles_alpha_n,
-    _traub_miles_beta_h,
-    _traub_miles_beta_m,
-    _traub_miles_beta_n,
-)
+from ._traub_miles import traub_miles_rates
 from .auxiliary import _alpha_dt, _beta_dt
 from .base import GatingVariable, IonChannel, IonSpecies, NernstSpec
 
@@ -41,136 +33,28 @@ __all__ = [
 THALAMIC_RELAY_VT: float = -52.0
 
 
-def _thalamic_relay_alpha_m_impl(V: float, ca_i: float) -> float:
-    """Forward rate for thalamic relay Na⁺ activation gate m.
+# Traub-Miles rates parameterized for thalamic relay cells (VT = −52 mV).
+# Reference: McCormick & Huguenard (1992), J. Neurophysiol. 68:1384;
+# Pospischil et al. (2008), Biol. Cybern. 99:427, Table 2 (TC model).
+_THALAMIC_RELAY_RATES = traub_miles_rates(THALAMIC_RELAY_VT)
 
-    Traub-Miles form parameterised for thalamic relay cells (VT = −52 mV).
-    Has a removable singularity at V = VT + 13 = −39 mV; the L'Hôpital
-    limit (1.28) is returned when ``|V − VT − 13| < SINGULARITY_THRESHOLD``.
+#: Forward rate for thalamic relay Na⁺ activation gate m.
+thalamic_relay_alpha_m = _THALAMIC_RELAY_RATES.alpha_m
 
-    Reference: McCormick & Huguenard (1992), J. Neurophysiol. 68:1384;
-    Pospischil et al. (2008), Biol. Cybern. 99:427, Table 2 (TC model).
+#: Backward rate for thalamic relay Na⁺ activation gate m.
+thalamic_relay_beta_m = _THALAMIC_RELAY_RATES.beta_m
 
-    Args:
-        V: Membrane voltage in mV.
-        ca_i: Intracellular Ca²⁺ concentration in mM (accepted but ignored).
+#: Forward rate for thalamic relay Na⁺ inactivation gate h.
+thalamic_relay_alpha_h = _THALAMIC_RELAY_RATES.alpha_h
 
-    Returns:
-        Forward rate in 1/ms.
-    """
-    return _traub_miles_alpha_m(V, THALAMIC_RELAY_VT)
+#: Backward rate for thalamic relay Na⁺ inactivation gate h.
+thalamic_relay_beta_h = _THALAMIC_RELAY_RATES.beta_h
 
+#: Forward rate for thalamic relay K⁺ activation gate n.
+thalamic_relay_alpha_n = _THALAMIC_RELAY_RATES.alpha_n
 
-thalamic_relay_alpha_m = VoltageOnlyFn(_thalamic_relay_alpha_m_impl)
-
-
-def _thalamic_relay_beta_m_impl(V: float, ca_i: float) -> float:
-    """Backward rate for thalamic relay Na⁺ activation gate m.
-
-    Traub-Miles form parameterised for thalamic relay cells (VT = −52 mV).
-    Has a removable singularity at V = VT + 40 = −12 mV; the L'Hôpital
-    limit (1.4) is returned when ``|V − VT − 40| < SINGULARITY_THRESHOLD``.
-
-    Reference: McCormick & Huguenard (1992), J. Neurophysiol. 68:1384;
-    Pospischil et al. (2008), Biol. Cybern. 99:427, Table 2 (TC model).
-
-    Args:
-        V: Membrane voltage in mV.
-        ca_i: Intracellular Ca²⁺ concentration in mM (accepted but ignored).
-
-    Returns:
-        Backward rate in 1/ms.
-    """
-    return _traub_miles_beta_m(V, THALAMIC_RELAY_VT)
-
-
-thalamic_relay_beta_m = VoltageOnlyFn(_thalamic_relay_beta_m_impl)
-
-
-def _thalamic_relay_alpha_h_impl(V: float, ca_i: float) -> float:
-    """Forward rate for thalamic relay Na⁺ inactivation gate h.
-
-    Traub-Miles form parameterised for thalamic relay cells (VT = −52 mV).
-
-    Reference: McCormick & Huguenard (1992), J. Neurophysiol. 68:1384;
-    Pospischil et al. (2008), Biol. Cybern. 99:427, Table 2 (TC model).
-
-    Args:
-        V: Membrane voltage in mV.
-        ca_i: Intracellular Ca²⁺ concentration in mM (accepted but ignored).
-
-    Returns:
-        Forward rate in 1/ms.
-    """
-    return _traub_miles_alpha_h(V, THALAMIC_RELAY_VT)
-
-
-thalamic_relay_alpha_h = VoltageOnlyFn(_thalamic_relay_alpha_h_impl)
-
-
-def _thalamic_relay_beta_h_impl(V: float, ca_i: float) -> float:
-    """Backward rate for thalamic relay Na⁺ inactivation gate h.
-
-    Traub-Miles form parameterised for thalamic relay cells (VT = −52 mV).
-
-    Reference: McCormick & Huguenard (1992), J. Neurophysiol. 68:1384;
-    Pospischil et al. (2008), Biol. Cybern. 99:427, Table 2 (TC model).
-
-    Args:
-        V: Membrane voltage in mV.
-        ca_i: Intracellular Ca²⁺ concentration in mM (accepted but ignored).
-
-    Returns:
-        Backward rate in 1/ms.
-    """
-    return _traub_miles_beta_h(V, THALAMIC_RELAY_VT)
-
-
-thalamic_relay_beta_h = VoltageOnlyFn(_thalamic_relay_beta_h_impl)
-
-
-def _thalamic_relay_alpha_n_impl(V: float, ca_i: float) -> float:
-    """Forward rate for thalamic relay K⁺ delayed-rectifier activation gate n.
-
-    Traub-Miles form parameterised for thalamic relay cells (VT = −52 mV).
-    Has a removable singularity at V = VT + 15 = −37 mV; the L'Hôpital
-    limit (0.16) is returned when ``|V − VT − 15| < SINGULARITY_THRESHOLD``.
-
-    Reference: McCormick & Huguenard (1992), J. Neurophysiol. 68:1384;
-    Pospischil et al. (2008), Biol. Cybern. 99:427, Table 2 (TC model).
-
-    Args:
-        V: Membrane voltage in mV.
-        ca_i: Intracellular Ca²⁺ concentration in mM (accepted but ignored).
-
-    Returns:
-        Forward rate in 1/ms.
-    """
-    return _traub_miles_alpha_n(V, THALAMIC_RELAY_VT)
-
-
-thalamic_relay_alpha_n = VoltageOnlyFn(_thalamic_relay_alpha_n_impl)
-
-
-def _thalamic_relay_beta_n_impl(V: float, ca_i: float) -> float:
-    """Backward rate for thalamic relay K⁺ delayed-rectifier activation gate n.
-
-    Traub-Miles form parameterised for thalamic relay cells (VT = −52 mV).
-
-    Reference: McCormick & Huguenard (1992), J. Neurophysiol. 68:1384;
-    Pospischil et al. (2008), Biol. Cybern. 99:427, Table 2 (TC model).
-
-    Args:
-        V: Membrane voltage in mV.
-        ca_i: Intracellular Ca²⁺ concentration in mM (accepted but ignored).
-
-    Returns:
-        Backward rate in 1/ms.
-    """
-    return _traub_miles_beta_n(V, THALAMIC_RELAY_VT)
-
-
-thalamic_relay_beta_n = VoltageOnlyFn(_thalamic_relay_beta_n_impl)
+#: Backward rate for thalamic relay K⁺ activation gate n.
+thalamic_relay_beta_n = _THALAMIC_RELAY_RATES.beta_n
 
 
 def make_thalamic_relay_na_channel(g_max: float) -> IonChannel:

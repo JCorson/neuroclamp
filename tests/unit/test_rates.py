@@ -363,15 +363,15 @@ def test_inf_tau_accepts_a_numeric_steady_state() -> None:
     assert not beta.uses_calcium
 
 
-def test_exp_linear_shares_the_channel_singularity_threshold() -> None:
-    """``ExpLinear`` uses the same singularity tolerance as the HH52 rates."""
+def test_exp_linear_rates_share_the_channel_singularity_threshold() -> None:
+    """HH52 and Traub-Miles exp-linear rates use the shared tolerance."""
     from neuroclamp.channels import SINGULARITY_THRESHOLD
-    from neuroclamp.channels._traub_miles import (
-        SINGULARITY_THRESHOLD as TRAUB_THRESHOLD,
-    )
+    from neuroclamp.channels._traub_miles import traub_miles_rates
 
-    assert ExpLinear(0.1, -40.0, 10.0).tol == SINGULARITY_THRESHOLD
-    assert TRAUB_THRESHOLD is SINGULARITY_THRESHOLD
+    traub = traub_miles_rates(-56.2)
+    for rate in (alpha_n, alpha_m, traub.alpha_m, traub.beta_m, traub.alpha_n):
+        assert isinstance(rate, ExpLinear)
+        assert rate.tol == SINGULARITY_THRESHOLD
 
 
 @pytest.mark.parametrize("form", [Exp, Sigmoid, ExpLinear, Sech])

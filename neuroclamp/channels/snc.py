@@ -17,15 +17,7 @@ Includes SNc-specific INaP (Drion et al. 2011) and Cav1.3 (Putzier et al.
 
 from ..constants import DEFAULT_G_CAV13, DEFAULT_G_NAP_SNC
 from ..electrochemistry import boltzmann_cosh_rates
-from ..rates import VoltageOnlyFn
-from ._traub_miles import (
-    _traub_miles_alpha_h,
-    _traub_miles_alpha_m,
-    _traub_miles_alpha_n,
-    _traub_miles_beta_h,
-    _traub_miles_beta_m,
-    _traub_miles_beta_n,
-)
+from ._traub_miles import traub_miles_rates
 from .base import GatingVariable, IonChannel, IonSpecies, NernstSpec
 
 __all__ = [
@@ -51,151 +43,31 @@ __all__ = [
 DOPAMINERGIC_VT: float = -67.0
 
 
-def _dopaminergic_alpha_m_impl(V: float, ca_i: float) -> float:
-    """Forward rate for dopaminergic Na⁺ activation gate m.
+# Traub-Miles rates parameterized for midbrain dopaminergic (SNc/VTA)
+# cells (VT = −67 mV).  With this VT they equal the Canavier (1999) /
+# Komendantov et al. (2004) forms α_m = 0.32(V+54)/(1−exp(−(V+54)/4)),
+# β_m = 0.28(V+27)/(exp((V+27)/5)−1) and α_n = 0.032(V+52)/(1−exp(−(V+52)/5)).
+# Reference: Canavier (1999), J. Comput. Neurosci. 6:49;
+# Komendantov et al. (2004), J. Neurophysiol. 91:346.
+_DOPAMINERGIC_RATES = traub_miles_rates(DOPAMINERGIC_VT)
 
-    Traub-Miles form parameterised for midbrain dopaminergic (SNc/VTA) cells
-    (VT = −67 mV).  Has a removable singularity at V = VT + 13 = −54 mV; the
-    L'Hôpital limit (1.28) is returned when
-    ``|V − VT − 13| < SINGULARITY_THRESHOLD``.
+#: Forward rate for dopaminergic Na⁺ activation gate m.
+dopaminergic_alpha_m = _DOPAMINERGIC_RATES.alpha_m
 
-    Algebraically equivalent to α_m = 0.32*(V+54)/(1−exp(−(V+54)/4)) from
-    Canavier (1999) / Komendantov et al. (2004).
+#: Backward rate for dopaminergic Na⁺ activation gate m.
+dopaminergic_beta_m = _DOPAMINERGIC_RATES.beta_m
 
-    Reference: Canavier (1999), J. Comput. Neurosci. 6:49;
-    Komendantov et al. (2004), J. Neurophysiol. 91:346.
+#: Forward rate for dopaminergic Na⁺ inactivation gate h.
+dopaminergic_alpha_h = _DOPAMINERGIC_RATES.alpha_h
 
-    Args:
-        V: Membrane voltage in mV.
-        ca_i: Intracellular Ca²⁺ concentration in mM (accepted but ignored).
+#: Backward rate for dopaminergic Na⁺ inactivation gate h.
+dopaminergic_beta_h = _DOPAMINERGIC_RATES.beta_h
 
-    Returns:
-        Forward rate in 1/ms.
-    """
-    return _traub_miles_alpha_m(V, DOPAMINERGIC_VT)
+#: Forward rate for dopaminergic K⁺ activation gate n.
+dopaminergic_alpha_n = _DOPAMINERGIC_RATES.alpha_n
 
-
-dopaminergic_alpha_m = VoltageOnlyFn(_dopaminergic_alpha_m_impl)
-
-
-def _dopaminergic_beta_m_impl(V: float, ca_i: float) -> float:
-    """Backward rate for dopaminergic Na⁺ activation gate m.
-
-    Traub-Miles form parameterised for midbrain dopaminergic (SNc/VTA) cells
-    (VT = −67 mV).  Has a removable singularity at V = VT + 40 = −27 mV; the
-    L'Hôpital limit (1.4) is returned when
-    ``|V − VT − 40| < SINGULARITY_THRESHOLD``.
-
-    Algebraically equivalent to β_m = 0.28*(V+27)/(exp((V+27)/5)−1) from
-    Canavier (1999) / Komendantov et al. (2004).
-
-    Reference: Canavier (1999), J. Comput. Neurosci. 6:49;
-    Komendantov et al. (2004), J. Neurophysiol. 91:346.
-
-    Args:
-        V: Membrane voltage in mV.
-        ca_i: Intracellular Ca²⁺ concentration in mM (accepted but ignored).
-
-    Returns:
-        Backward rate in 1/ms.
-    """
-    return _traub_miles_beta_m(V, DOPAMINERGIC_VT)
-
-
-dopaminergic_beta_m = VoltageOnlyFn(_dopaminergic_beta_m_impl)
-
-
-def _dopaminergic_alpha_h_impl(V: float, ca_i: float) -> float:
-    """Forward rate for dopaminergic Na⁺ inactivation gate h.
-
-    Traub-Miles form parameterised for midbrain dopaminergic (SNc/VTA) cells
-    (VT = −67 mV).
-
-    Reference: Canavier (1999), J. Comput. Neurosci. 6:49;
-    Komendantov et al. (2004), J. Neurophysiol. 91:346.
-
-    Args:
-        V: Membrane voltage in mV.
-        ca_i: Intracellular Ca²⁺ concentration in mM (accepted but ignored).
-
-    Returns:
-        Forward rate in 1/ms.
-    """
-    return _traub_miles_alpha_h(V, DOPAMINERGIC_VT)
-
-
-dopaminergic_alpha_h = VoltageOnlyFn(_dopaminergic_alpha_h_impl)
-
-
-def _dopaminergic_beta_h_impl(V: float, ca_i: float) -> float:
-    """Backward rate for dopaminergic Na⁺ inactivation gate h.
-
-    Traub-Miles form parameterised for midbrain dopaminergic (SNc/VTA) cells
-    (VT = −67 mV).
-
-    Reference: Canavier (1999), J. Comput. Neurosci. 6:49;
-    Komendantov et al. (2004), J. Neurophysiol. 91:346.
-
-    Args:
-        V: Membrane voltage in mV.
-        ca_i: Intracellular Ca²⁺ concentration in mM (accepted but ignored).
-
-    Returns:
-        Backward rate in 1/ms.
-    """
-    return _traub_miles_beta_h(V, DOPAMINERGIC_VT)
-
-
-dopaminergic_beta_h = VoltageOnlyFn(_dopaminergic_beta_h_impl)
-
-
-def _dopaminergic_alpha_n_impl(V: float, ca_i: float) -> float:
-    """Forward rate for dopaminergic K⁺ delayed-rectifier activation gate n.
-
-    Traub-Miles form parameterised for midbrain dopaminergic (SNc/VTA) cells
-    (VT = −67 mV).  Has a removable singularity at V = VT + 15 = −52 mV; the
-    L'Hôpital limit (0.16) is returned when
-    ``|V − VT − 15| < SINGULARITY_THRESHOLD``.
-
-    Algebraically equivalent to α_n = 0.032*(V+52)/(1−exp(−(V+52)/5)) from
-    Canavier (1999) / Komendantov et al. (2004).
-
-    Reference: Canavier (1999), J. Comput. Neurosci. 6:49;
-    Komendantov et al. (2004), J. Neurophysiol. 91:346.
-
-    Args:
-        V: Membrane voltage in mV.
-        ca_i: Intracellular Ca²⁺ concentration in mM (accepted but ignored).
-
-    Returns:
-        Forward rate in 1/ms.
-    """
-    return _traub_miles_alpha_n(V, DOPAMINERGIC_VT)
-
-
-dopaminergic_alpha_n = VoltageOnlyFn(_dopaminergic_alpha_n_impl)
-
-
-def _dopaminergic_beta_n_impl(V: float, ca_i: float) -> float:
-    """Backward rate for dopaminergic K⁺ delayed-rectifier activation gate n.
-
-    Traub-Miles form parameterised for midbrain dopaminergic (SNc/VTA) cells
-    (VT = −67 mV).
-
-    Reference: Canavier (1999), J. Comput. Neurosci. 6:49;
-    Komendantov et al. (2004), J. Neurophysiol. 91:346.
-
-    Args:
-        V: Membrane voltage in mV.
-        ca_i: Intracellular Ca²⁺ concentration in mM (accepted but ignored).
-
-    Returns:
-        Backward rate in 1/ms.
-    """
-    return _traub_miles_beta_n(V, DOPAMINERGIC_VT)
-
-
-dopaminergic_beta_n = VoltageOnlyFn(_dopaminergic_beta_n_impl)
+#: Backward rate for dopaminergic K⁺ activation gate n.
+dopaminergic_beta_n = _DOPAMINERGIC_RATES.beta_n
 
 
 # ---------------------------------------------------------------------------
