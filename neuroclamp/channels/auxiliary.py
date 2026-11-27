@@ -54,15 +54,13 @@ __all__ = [
 _alpha_r = Exp(1.0, 14.59 / -0.086, 1.0 / -0.086)
 _beta_r = Exp(1.0, 1.87 / 0.0701, 1.0 / 0.0701)
 
-_SINGULARITY_TOL: float = 1e-7
-
 # IKa activation gate a and inactivation gate b (Traub & Miles 1991), in the
 # absolute voltage convention (−65 mV resting).  alpha_a and beta_a are
 # exp-linear rates with removable singularities at −51.9 mV and −24.9 mV,
 # where their analytic limits (0.2 and 0.175 per ms) are returned.
-_alpha_a = ExpLinear(0.02, -51.9, 10.0, tol=_SINGULARITY_TOL)
+_alpha_a = ExpLinear(0.02, -51.9, 10.0)
 # 0.0175 x / (exp(x / 10) − 1) is the mirrored exp-linear form.
-_beta_a = ExpLinear(-0.0175, -24.9, -10.0, tol=_SINGULARITY_TOL)
+_beta_a = ExpLinear(-0.0175, -24.9, -10.0)
 _alpha_b = Exp(0.0016, -73.0, -18.0)
 _beta_b = Sigmoid(0.05, -13.0, 10.0)
 
