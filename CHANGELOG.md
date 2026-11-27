@@ -27,6 +27,21 @@ listed under **Changed** or **Removed**.
   Expressions derive it automatically; a custom `Rate` subclass that does not
   declare it is treated as Ca²⁺-dependent.
 
+### Changed
+
+- Every built-in channel's gating rates are now rate expressions. Public rate
+  objects such as `neuroclamp.channels.alpha_m`, `pospischil_alpha_m` and
+  `mainen_sejnowski_beta_h` are `neuroclamp.rates` expression nodes instead of
+  `VoltageOnlyFn` wrappers around Python functions, and
+  `boltzmann_cosh_rates()` returns the expressions built by `inf_tau()`.
+  Calling a rate as `rate(V, ca_i)` works as before, and simulation results
+  are unchanged apart from floating-point rounding.
+
+### Removed
+
+- **Breaking:** `neuroclamp.electrochemistry.BoltzmannCoshRate`. Use the rates
+  returned by `boltzmann_cosh_rates()`, which are ordinary rate expressions.
+
 ## [0.1.0] - 2026-11-25
 
 The first release of neuroclamp, a patch-clamp experiment simulator built on
