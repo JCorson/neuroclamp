@@ -1,6 +1,6 @@
 """Sanity-guard integration tests for dynamic E_Ca (issue #264 Phase 2).
 
-Two property-based guards:
+Property-based guards:
 
 1. A non-Ca preset's voltage trace is invariant to ``Neuron.Ca_in`` —
    proving the dynamic E_Ca plumbing does not accidentally couple non-Ca
@@ -9,14 +9,24 @@ Two property-based guards:
    stays pinned to ``ca_rest`` within tens of nanomolar — proving Ca²⁺
    activation collapses (and therefore Ca²⁺ influx is suppressed) when
    expected.
+3. Without Ca²⁺ dynamics, Ca²⁺ channels see the E_Ca of ``Neuron.Ca_in``
+   rather than of a zero concentration.
 """
 
 import dataclasses
 
 import numpy as np
+import pytest
 
-from neuroclamp import simulate_current_clamp
+from neuroclamp import (
+    Neuron,
+    simulate_current_clamp,
+    simulate_current_clamp_from_state,
+    simulate_voltage_clamp,
+    simulate_voltage_clamp_from_state,
+)
 from neuroclamp.constants import SIM_SAMPLING_FREQ
+from neuroclamp.electrochemistry import nernst_potential
 from neuroclamp.presets import CORTICAL_PYRAMIDAL, NEURON_PRESETS, PURKINJE
 
 
@@ -95,3 +105,56 @@ def test_hyperpolarization_suppresses_ca_influx() -> None:
         f"ca_i deviated {max_dev_mm:.2e} mM from ca_rest under strong "
         "hyperpolarization — Ca²⁺ activation may not be properly suppressed."
     )
+
+
+def _purkinje_without_ca_dynamics() -> Neuron:
+    """Return the Purkinje preset with its Ca²⁺ dynamics removed.
+
+    Returns:
+        A neuron whose Ca²⁺ channels run with Ca²⁺ held constant.
+    """
+    neuron = NEURON_PRESETS[PURKINJE]()
+    assert any(ch.carries_calcium for ch in neuron.channels)
+    return dataclasses.replace(neuron, calcium_dynamics=None)
+
+
+def test_voltage_clamp_without_ca_dynamics_uses_ca_in() -> None:
+    """Held-constant Ca²⁺ gives Ca²⁺ channels the E_Ca of ``Ca_in``.
+
+    Each Ca²⁺ channel's current at the first step must equal its conductance
+    times the driving force against the Nernst potential of ``neuron.Ca_in``
+    (about +125 mV), not of a zero (floored) concentration.
+    """
+    neuron = _purkinje_without_ca_dynamics()
+    protocol = np.full(_n_steps(5), -20.0)
+    result = simulate_voltage_clamp(neuron, protocol)
+    e_ca = nernst_potential(2, neuron.T, neuron.Ca_out, neuron.Ca_in)
+    assert 100.0 < e_ca < 150.0
+    for ch in neuron.channels:
+        if not ch.carries_calcium:
+            continue
+        g = ch.g_max
+        for gv in ch.gating_variables:
+            g *= result[gv.name][0] ** gv.power
+        assert result[f"I{ch.name}"][0] == pytest.approx(g * (-20.0 - e_ca), rel=1e-12)
+
+
+def test_from_state_defaults_match_the_fresh_runs() -> None:
+    """Omitting ``initial_ca_i`` starts from the same Ca²⁺ as a fresh run."""
+    neuron = _purkinje_without_ca_dynamics()
+    n = _n_steps(5)
+
+    protocol = np.full(n, -20.0)
+    vc = simulate_voltage_clamp(neuron, protocol)
+    gv_names = [gv.name for gv in neuron.all_gating_variables]
+    vc_state = {name: float(vc[name][0]) for name in gv_names}
+    vc_from_state = simulate_voltage_clamp_from_state(neuron, protocol, vc_state)
+    np.testing.assert_array_equal(vc_from_state["Itotal"], vc["Itotal"])
+
+    stim = np.zeros(n)
+    cc = simulate_current_clamp(neuron, stim)
+    cc_state = {name: float(cc[name][0]) for name in gv_names}
+    cc_from_state = simulate_current_clamp_from_state(
+        neuron, stim, float(cc["voltage"][0]), cc_state
+    )
+    np.testing.assert_array_equal(cc_from_state["voltage"], cc["voltage"])

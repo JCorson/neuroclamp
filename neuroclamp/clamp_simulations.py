@@ -201,6 +201,30 @@ def _advance_state(
     return {k: state[k] + dt * derivs[k] for k in state}
 
 
+def _default_initial_ca_i(neuron: "Neuron", *, use_ca_init: bool) -> float:
+    """Return the starting intracellular Ca²⁺ for a run with no explicit value.
+
+    With Ca²⁺ dynamics, a run starts at the dynamics' resting level (or at
+    ``ca_init`` when requested and set).  Without dynamics, Ca²⁺ is held at
+    the neuron's ``Ca_in``, the same concentration its equilibrium and static
+    reversal potentials use, so Ca²⁺ channels see a physiological E_Ca.
+
+    Args:
+        neuron: The conductance-based neuron model.
+        use_ca_init: Whether to prefer ``calcium_dynamics.ca_init`` over
+            ``ca_rest`` when it is set.
+
+    Returns:
+        Intracellular Ca²⁺ concentration in mM.
+    """
+    cd = neuron.calcium_dynamics
+    if cd is None:
+        return neuron.Ca_in
+    if use_ca_init and cd.ca_init is not None:
+        return cd.ca_init
+    return cd.ca_rest
+
+
 def _clip_state(state: dict[str, float]) -> dict[str, float]:
     """Clip all gating variable values to [0, 1].
 
@@ -729,9 +753,7 @@ def simulate_voltage_clamp(
     if not np.all(np.isfinite(voltage_protocol)):
         raise ValueError("voltage_protocol must not contain NaN or Inf values.")
 
-    ca_i: float = (
-        neuron.calcium_dynamics.ca_rest if neuron.calcium_dynamics is not None else 0.0
-    )
+    ca_i = _default_initial_ca_i(neuron, use_ca_init=False)
     gating_state = _initialize_gating_variables(neuron, voltage_protocol[0], ca_i)
     return _simulate_voltage_clamp_core(neuron, voltage_protocol, gating_state, ca_i)
 
@@ -773,12 +795,7 @@ def simulate_current_clamp(
     if not np.all(np.isfinite(current_external)):
         raise ValueError("current_external must not contain NaN or Inf values.")
 
-    cd = neuron.calcium_dynamics
-    ca_i: float = (
-        (cd.ca_init if cd.ca_init is not None else cd.ca_rest)
-        if cd is not None
-        else 0.0
-    )
+    ca_i = _default_initial_ca_i(neuron, use_ca_init=True)
     gating_state = _initialize_gating_variables(neuron, neuron.v_rest, ca_i)
     return _simulate_current_clamp_core(
         neuron, current_external, neuron.v_rest, gating_state, ca_i
@@ -789,7 +806,7 @@ def simulate_voltage_clamp_from_state(
     neuron: "Neuron",
     voltage_protocol: np.ndarray,
     initial_gating_state: dict[str, float],
-    initial_ca_i: float = 0.0,
+    initial_ca_i: float | None = None,
 ) -> SimulationResult:
     """Simulate a voltage clamp experiment starting from an explicit gating state.
 
@@ -804,7 +821,9 @@ def simulate_voltage_clamp_from_state(
             each time step.
         initial_gating_state: Gating variable values at the start of the run,
             keyed by variable name (e.g. ``{"m": 0.05, "h": 0.6, "n": 0.3}``).
-        initial_ca_i: Initial intracellular Ca²⁺ concentration in mM.
+        initial_ca_i: Initial intracellular Ca²⁺ concentration in mM.  When
+            ``None``, the value :func:`simulate_voltage_clamp` starts from:
+            ``calcium_dynamics.ca_rest``, or ``neuron.Ca_in`` without dynamics.
 
     Returns:
         Structured array with the same fields as :func:`simulate_voltage_clamp`.
@@ -822,6 +841,8 @@ def simulate_voltage_clamp_from_state(
         duration_ms,
         len(neuron.channels),
     )
+    if initial_ca_i is None:
+        initial_ca_i = _default_initial_ca_i(neuron, use_ca_init=False)
     result = _simulate_voltage_clamp_core(
         neuron, voltage_protocol, dict(initial_gating_state), initial_ca_i
     )
@@ -836,7 +857,7 @@ def simulate_current_clamp_from_state(
     current_external: np.ndarray,
     initial_V: float,
     initial_gating_state: dict[str, float],
-    initial_ca_i: float = 0.0,
+    initial_ca_i: float | None = None,
 ) -> SimulationResult:
     """Simulate a current clamp experiment starting from an explicit neuron state.
 
@@ -852,7 +873,10 @@ def simulate_current_clamp_from_state(
         initial_V: Initial membrane voltage in mV.
         initial_gating_state: Gating variable values at the start of the run,
             keyed by variable name (e.g. ``{"m": 0.05, "h": 0.6, "n": 0.3}``).
-        initial_ca_i: Initial intracellular Ca²⁺ concentration in mM.
+        initial_ca_i: Initial intracellular Ca²⁺ concentration in mM.  When
+            ``None``, the value :func:`simulate_current_clamp` starts from:
+            ``calcium_dynamics.ca_init`` (or ``ca_rest``), or ``neuron.Ca_in``
+            without dynamics.
 
     Returns:
         Structured array with the same fields as :func:`simulate_current_clamp`.
@@ -870,6 +894,8 @@ def simulate_current_clamp_from_state(
         duration_ms,
         len(neuron.channels),
     )
+    if initial_ca_i is None:
+        initial_ca_i = _default_initial_ca_i(neuron, use_ca_init=True)
     result = _simulate_current_clamp_core(
         neuron, current_external, initial_V, dict(initial_gating_state), initial_ca_i
     )

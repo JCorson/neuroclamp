@@ -45,6 +45,18 @@ listed under **Changed** or **Removed**.
 - **Breaking:** `neuroclamp.electrochemistry.BoltzmannCoshRate`. Use the rates
   returned by `boltzmann_cosh_rates()`, which are ordinary rate expressions.
 
+### Fixed
+
+- A neuron with Ca²⁺ channels but no `calcium_dynamics` now holds
+  intracellular Ca²⁺ at its `Ca_in` instead of at zero. Before, its Ca²⁺
+  channels saw an E_Ca of about +286 mV instead of about +125 mV, so their
+  inward current was far too large. This changes results for such neurons in
+  `simulate_voltage_clamp`, `simulate_current_clamp` and continuous mode in
+  the app; the built-in presets are unaffected. `initial_ca_i` in
+  `simulate_voltage_clamp_from_state` and `simulate_current_clamp_from_state`
+  now defaults to the same starting Ca²⁺ as the fresh-run functions instead
+  of 0.0.
+
 ## [0.1.0] - 2026-11-25
 
 The first release of neuroclamp, a patch-clamp experiment simulator built on

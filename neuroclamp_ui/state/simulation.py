@@ -795,7 +795,9 @@ class SimulationState(rx.State):
                 gating_cols = [col for col in result.dtype.names if col in gating_vars]
                 last_gating = {col: float(result[col][-1]) for col in gating_cols}
                 last_ca_i = (
-                    float(result["ca_i"][-1]) if "ca_i" in result.dtype.names else 0.0
+                    float(result["ca_i"][-1])
+                    if "ca_i" in result.dtype.names
+                    else neuron.Ca_in
                 )
 
                 sweep = Sweep.from_result(result, stimulus, "", "", mode)
