@@ -348,3 +348,13 @@ def test_operators_reject_unsupported_operands_with_type_error() -> None:
         "a" * sig  # type: ignore[operator]
     with pytest.raises(TypeError):
         inf_tau(sig, "a")  # type: ignore[arg-type]
+
+
+def test_inf_tau_accepts_a_numeric_steady_state() -> None:
+    """A numeric ``inf`` is wrapped in ``Const`` like a numeric ``tau``."""
+    alpha, beta = inf_tau(0.25, 5.0)
+    assert alpha.a == Const(0.25)
+    assert alpha(-60.0, 0.0) == pytest.approx(0.05)
+    assert beta(-60.0, 0.0) == pytest.approx(0.15)
+    assert not alpha.uses_calcium
+    assert not beta.uses_calcium

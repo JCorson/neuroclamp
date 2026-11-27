@@ -702,7 +702,7 @@ class InfTauBeta(_Binary):
         return (1.0 - self.a(V, ca_i)) / self.b(V, ca_i)
 
 
-def inf_tau(inf: Expr, tau: "Rate | float") -> tuple[InfTauAlpha, InfTauBeta]:
+def inf_tau(inf: "Rate | float", tau: "Rate | float") -> tuple[InfTauAlpha, InfTauBeta]:
     """Build a gate's (alpha, beta) rates from its steady state and time constant.
 
     Many channel models specify a gate by ``x_inf(V)`` and ``tau_x(V)``
@@ -710,11 +710,12 @@ def inf_tau(inf: Expr, tau: "Rate | float") -> tuple[InfTauAlpha, InfTauBeta]:
     ``beta = (1 − inf) / tau``, so that ``dx/dt = (inf − x) / tau``.
 
     Args:
-        inf: Steady-state open probability expression.
+        inf: Steady-state open probability, as a rate or a number.
         tau: Time constant in ms, as a rate or a number.
 
     Returns:
         ``(alpha, beta)`` for a :class:`~neuroclamp.channels.GatingVariable`.
     """
+    inf_expr = _as_expr(inf)
     tau_expr = _as_expr(tau)
-    return InfTauAlpha(inf, tau_expr), InfTauBeta(inf, tau_expr)
+    return InfTauAlpha(inf_expr, tau_expr), InfTauBeta(inf_expr, tau_expr)
