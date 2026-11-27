@@ -17,9 +17,8 @@ channels + persistent Na⁺ leak) and removes the unphysiological dependence on
 intracellular [Cl⁻] that arose when using a single chloride-Nernst leak.
 """
 
-from ..rates import VoltageOnlyFn
+from ..rates import SINGULARITY_THRESHOLD, VoltageOnlyFn
 from ..utils import safe_exp
-from ._traub_miles import SINGULARITY_THRESHOLD
 from .base import GatingVariable, IonChannel, IonSpecies, NernstSpec
 
 __all__ = [

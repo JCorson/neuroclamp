@@ -358,3 +358,14 @@ def test_inf_tau_accepts_a_numeric_steady_state() -> None:
     assert beta(-60.0, 0.0) == pytest.approx(0.15)
     assert not alpha.uses_calcium
     assert not beta.uses_calcium
+
+
+def test_exp_linear_shares_the_channel_singularity_threshold() -> None:
+    """``ExpLinear`` uses the same singularity tolerance as the HH52 rates."""
+    from neuroclamp.channels import SINGULARITY_THRESHOLD
+    from neuroclamp.channels._traub_miles import (
+        SINGULARITY_THRESHOLD as TRAUB_THRESHOLD,
+    )
+
+    assert ExpLinear(0.1, -40.0, 10.0).tol == SINGULARITY_THRESHOLD
+    assert TRAUB_THRESHOLD is SINGULARITY_THRESHOLD

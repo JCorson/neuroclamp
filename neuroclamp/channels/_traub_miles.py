@@ -7,12 +7,8 @@ helpers encode each form once; the public wrappers delegate to them with the
 appropriate VT constant.
 """
 
+from ..rates import SINGULARITY_THRESHOLD
 from ..utils import safe_exp
-
-# Threshold for detecting near-singularity in GHK-style rate equations.
-# When the denominator voltage term is within this tolerance of zero, the
-# L'Hôpital limit is used instead to avoid division by zero.
-SINGULARITY_THRESHOLD: float = 1e-6
 
 
 def _traub_miles_alpha_m(V: float, vt: float) -> float:

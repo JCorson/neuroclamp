@@ -151,9 +151,11 @@ class CalciumDependentFn(CalciumDependentRate):
 # Rate expressions
 # ---------------------------------------------------------------------------
 
-#: Distance in mV from an :class:`ExpLinear` singularity within which its
-#: analytic limit is returned instead of the 0/0 formula.
-EXP_LINEAR_TOL: float = 1e-6
+#: Distance in mV from a removable exp-linear singularity within which the
+#: analytic (L'Hôpital) limit is returned instead of the 0/0 formula.  Shared
+#: by :class:`ExpLinear` and the hand-written HH52 and Traub-Miles rates so
+#: both agree near the singular point.
+SINGULARITY_THRESHOLD: float = 1e-6
 
 
 class Expr(Rate):
@@ -459,7 +461,7 @@ class ExpLinear(Expr):
     k: float
     vh: float
     s: float
-    tol: float = EXP_LINEAR_TOL
+    tol: float = SINGULARITY_THRESHOLD
 
     def __call__(self, V: float, ca_i: float) -> float:
         """Evaluate the exp-linear form.
