@@ -5,6 +5,9 @@ Usage::
     uv build
     uv run --no-project python tools/check_dist.py dist
 
+The directory holds one sdist and one or more wheels (the release workflow
+collects a wheel per platform); every wheel is checked.
+
 The checks guard what an installed ``neuroclamp`` needs at runtime (the
 compiled Rust core, help pages, JS templates, screenshots), the Rust sources
 the sdist needs to rebuild that core, and what must stay out of both (a top-level
@@ -167,17 +170,27 @@ def main(argv: list[str] | None = None) -> int:
         Process exit code: 0 when every check passes, 1 otherwise.
     """
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    parser.add_argument("dist_dir", type=Path, help="directory produced by uv build")
+    parser.add_argument(
+        "dist_dir",
+        type=Path,
+        help="directory holding the sdist and one or more platform wheels",
+    )
     args = parser.parse_args(argv)
 
-    wheel = _single(args.dist_dir, "*.whl")
+    wheels = sorted(args.dist_dir.glob("*.whl"))
+    if not wheels:
+        raise SystemExit(f"expected at least one wheel in {args.dist_dir}")
     sdist = _single(args.dist_dir, "*.tar.gz")
-    failures = check_wheel(wheel) + check_sdist(sdist)
+    failures = check_sdist(sdist)
+    for wheel in wheels:
+        failures += [f"{wheel.name}: {failure}" for failure in check_wheel(wheel)]
     for failure in failures:
         print(f"FAIL {failure}", file=sys.stderr)
     if failures:
         return 1
-    print(f"OK {wheel.name} and {sdist.name}")
+    for wheel in wheels:
+        print(f"OK {wheel.name}")
+    print(f"OK {sdist.name}")
     return 0
 
 
