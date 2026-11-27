@@ -528,3 +528,74 @@ def test_parameter_values_are_never_executed_as_code() -> None:
     assert Const(cast("float", payload))(-65.0, 0.0) == payload
     assert math.isnan(Const(math.nan)(-65.0, 0.0))
     assert Const(math.inf)(-65.0, 0.0) == math.inf
+
+
+class _ConstantExp(Exp):
+    """An ``Exp`` subclass whose ``evaluate`` ignores the parent's formula."""
+
+    def evaluate(self, V: float, ca_i: float) -> float:
+        """Return a fixed value.
+
+        Args:
+            V: Membrane voltage in mV (ignored).
+            ca_i: Intracellular Ca²⁺ concentration in mM (ignored).
+
+        Returns:
+            Always 99.0.
+        """
+        return 99.0
+
+
+class _SwappedSub(Sub):
+    """A ``Sub`` subclass that computes ``b − a``."""
+
+    def evaluate(self, V: float, ca_i: float) -> float:
+        """Evaluate ``b − a``.
+
+        Args:
+            V: Membrane voltage in mV.
+            ca_i: Intracellular Ca²⁺ concentration in mM.
+
+        Returns:
+            The reversed difference.
+        """
+        return self.b(V, ca_i) - self.a(V, ca_i)
+
+
+def test_subclass_evaluate_overrides_are_honored_when_called() -> None:
+    """A built-in form subclassed with a new ``evaluate`` runs that ``evaluate``.
+
+    The override applies whether the subclass is the root of the expression
+    or an operand nested inside it.
+    """
+    leaf = _ConstantExp(1.0, 0.0, 1.0)
+    assert leaf(0.0, 0.0) == 99.0
+    assert (leaf + 0.0)(0.0, 0.0) == 99.0
+    assert (2.0 * leaf)(0.0, 0.0) == 198.0
+
+    swapped = _SwappedSub(Const(1.0), Const(5.0))
+    assert swapped(-65.0, 0.0) == 4.0
+    assert (swapped * 2.0)(-65.0, 0.0) == 8.0
+
+
+@pytest.mark.parametrize("n_terms", [250, 2000])
+def test_deep_expressions_evaluate_like_the_reference(n_terms: int) -> None:
+    """A deeply nested expression is callable and matches ``evaluate``.
+
+    Summing many terms one at a time builds a chain of ``Add`` nodes far
+    deeper than Python can parse as a single nested expression.
+
+    Args:
+        n_terms: Number of summed terms, which sets the tree depth.
+    """
+    expr = Const(0.0)
+    for i in range(n_terms):
+        expr = expr + Sigmoid(1.0, -40.0 + i, 5.0)
+    if n_terms <= 250:
+        assert expr(-30.0, 0.0) == expr.evaluate(-30.0, 0.0)
+    else:
+        # The reference walk recurses once per node, too deep to call directly.
+        expected = sum(
+            Sigmoid(1.0, -40.0 + i, 5.0).evaluate(-30.0, 0.0) for i in range(n_terms)
+        )
+        assert expr(-30.0, 0.0) == pytest.approx(expected)

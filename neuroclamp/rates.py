@@ -22,6 +22,7 @@ All rate types are frozen dataclasses, matching the picklability contract
 relied on by :func:`~neuroclamp.clamp_simulations.simulate_batch`.
 """
 
+import functools
 from abc import ABC, abstractmethod
 from collections.abc import Callable
 from dataclasses import dataclass
@@ -247,9 +248,13 @@ class Expr(Rate):
     def _source(self, emit: "_Emitter") -> str:
         """Return Python source evaluating this node, for :func:`_compile`.
 
-        The default calls :meth:`evaluate` on the node, so an ``Expr``
-        subclass defined outside this module only needs ``evaluate``.  The
-        built-in forms override this with inline arithmetic.
+        The built-in forms override this with inline arithmetic equivalent
+        to their :meth:`evaluate`.  A node whose class overrides ``evaluate``
+        without also overriding ``_source`` is not inlined: the compiled
+        function calls its ``evaluate`` instead (see :meth:`_Emitter.source`),
+        so an ``Expr`` subclass defined outside this module, or a subclass of
+        a built-in form, only needs ``evaluate``.  The default here does the
+        same.
 
         Args:
             emit: Collects the names the generated source refers to.
@@ -475,6 +480,7 @@ class _Emitter:
             "_max": max,
         }
         self._temps = 0
+        self._depth = 0
 
     def _bind(self, prefix: str, value: object) -> str:
         """Bind a value to a fresh name.
@@ -524,15 +530,61 @@ class _Emitter:
     def source(self, rate: Rate) -> str:
         """Return source evaluating an operand.
 
+        An expression node is inlined when its inline source describes its
+        own :meth:`~Expr.evaluate` (see :func:`_inlines`); otherwise its
+        ``evaluate`` is called as an opaque function, so a subclass that
+        overrides ``evaluate`` is never replaced by its parent's formula.
+        Inlining stops :data:`_MAX_INLINE_DEPTH` nodes below the root: a
+        deeper subtree is called through its own compiled function, which
+        keeps every generated source within the parser's nesting limit.
+
         Args:
             rate: An expression (inlined) or any other rate (called).
 
         Returns:
             A Python expression in ``V`` and ``ca_i``.
         """
-        if isinstance(rate, Expr):
+        if not isinstance(rate, Expr):
+            return f"{self.rate(rate)}(V, ca_i)"
+        if not _inlines(type(rate)):
+            return f"{self.rate(rate.evaluate)}(V, ca_i)"
+        if self._depth >= _MAX_INLINE_DEPTH:
+            return f"{self.rate(rate)}(V, ca_i)"
+        self._depth += 1
+        try:
             return rate._source(self)
-        return f"{self.rate(rate)}(V, ca_i)"
+        finally:
+            self._depth -= 1
+
+
+# How many nested expression nodes one compiled function inlines.  Each node
+# adds at most a few levels of parentheses to the generated source, so this
+# stays well below the roughly 200 levels Python's tokenizer accepts.
+_MAX_INLINE_DEPTH = 32
+
+
+@functools.cache
+def _inlines(cls: type) -> bool:
+    """Report whether a node class's inline source matches its ``evaluate``.
+
+    Walks the method resolution order and checks which of ``_source`` and
+    ``evaluate`` is defined closer to ``cls``.  A class that overrides
+    ``evaluate`` without also overriding ``_source`` would otherwise inherit
+    inline source for a different formula.
+
+    Args:
+        cls: An :class:`Expr` subclass.
+
+    Returns:
+        ``True`` if ``_source`` is defined in ``cls`` or a class nearer to it
+        than the nearest definition of ``evaluate``.
+    """
+    for klass in cls.__mro__:
+        if "_source" in vars(klass):
+            return True
+        if "evaluate" in vars(klass):
+            return False
+    return False
 
 
 def _compile(expr: "Expr") -> Callable[[float, float], float]:
