@@ -20,6 +20,8 @@ h_alpha, h_beta = inf_tau(
 h = GatingVariable("h", power=1, alpha=h_alpha, beta=h_beta)
 ```
 
+Every built-in channel defines its rates this way.
+
 Kinetics that no expression form covers can wrap a plain function with
 `VoltageOnlyFn` or `CalciumDependentFn`, which can also appear inside an
 expression.
