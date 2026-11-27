@@ -29,13 +29,16 @@ listed under **Changed** or **Removed**.
 
 ### Changed
 
-- Every built-in channel's gating rates are now rate expressions. Public rate
-  objects such as `neuroclamp.channels.alpha_m`, `pospischil_alpha_m` and
-  `mainen_sejnowski_beta_h` are `neuroclamp.rates` expression nodes instead of
-  `VoltageOnlyFn` wrappers around Python functions, and
-  `boltzmann_cosh_rates()` returns the expressions built by `inf_tau()`.
-  Calling a rate as `rate(V, ca_i)` works as before, and simulation results
-  are unchanged apart from floating-point rounding.
+- **Breaking:** every built-in channel's gating rates are now rate
+  expressions. Public rate objects such as `neuroclamp.channels.alpha_m`,
+  `pospischil_alpha_m` and `mainen_sejnowski_beta_h` are `neuroclamp.rates`
+  expression nodes instead of `VoltageOnlyFn` wrappers around Python
+  functions, and `boltzmann_cosh_rates()` returns the expressions built by
+  `inf_tau()`. Calling a rate as `rate(V, ca_i)` works as before, and
+  simulation results are unchanged apart from floating-point rounding. Code
+  that reads a built-in rate's `.fn`, checks `isinstance(rate, VoltageOnlyFn)`,
+  or reads fields of the old `boltzmann_cosh_rates()` results (`half`,
+  `slope`, `is_alpha`, ...) must be updated.
 
 ### Removed
 
