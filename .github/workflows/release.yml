@@ -140,14 +140,16 @@ jobs:
         run: |
           venv="$RUNNER_TEMP/venv"
           uv venv "$venv" --python ${{ matrix.python }}
-          # Pick the one wheel built for this OS and architecture.
-          wheel="$(uv run --no-project --python "$venv" python -I - <<'EOF'
+          # Pick the one wheel built for this OS and architecture. The script
+          # goes in a file because macOS ships bash 3.2, which mis-parses a
+          # heredoc inside $(...).
+          cat > "$RUNNER_TEMP/pick_wheel.py" <<'EOF'
           import glob
           import platform
           import sys
 
-          # The machine's architecture, not sysconfig.get_platform(): a
-          # universal2 Python on macOS reports "universal2" there.
+          # Use the machine architecture, not sysconfig.get_platform(): on
+          # macOS a universal2 Python reports "universal2" there.
           arch = platform.machine().lower()  # x86_64, aarch64, arm64, amd64
           marker = {"linux": "manylinux", "darwin": "macosx", "win32": "win"}[
               sys.platform
@@ -159,7 +161,7 @@ jobs:
           assert len(wheels) == 1, (sys.platform, arch, glob.glob("dist/*.whl"))
           print(wheels[0])
           EOF
-          )"
+          wheel="$(uv run --no-project --python "$venv" python -I "$RUNNER_TEMP/pick_wheel.py")"
           echo "Installing $wheel"
           uv pip install --python "$venv" "$wheel"
           echo "VENV=$venv" >> "$GITHUB_ENV"
