@@ -15,8 +15,7 @@ Parameterisation:
 """
 
 from ..constants import DEFAULT_G_ICAT
-from ..rates import VoltageOnlyFn
-from ..utils import safe_exp
+from ..rates import Sigmoid, inf_tau
 from ._traub_miles import traub_miles_rates
 from .auxiliary import _alpha_dt, _beta_dt
 from .base import GatingVariable, IonChannel, IonSpecies, NernstSpec
@@ -195,77 +194,19 @@ _TRN_FT_TAU_VHALF: float = -50.0  # Sigmoid midpoint for tau_ft in mV
 _TRN_FT_TAU_SLOPE: float = 5.0  # Sigmoid slope for tau_ft in mV
 
 
-def _trn_ft_inf(V: float) -> float:
-    """Steady-state inactivation of the TRN ICaT ``ft`` gate at voltage V.
-
-    Bit-identical to the Destexhe (1994) default used by
-    :func:`make_icat_channel`: half-point −80 mV, slope −9 mV.  At V = −80 mV
-    (TRN v_rest), ``ft_inf = 0.50`` — half de-inactivated, enabling the
-    post-inhibitory rebound burst.
-
-    Args:
-        V: Membrane voltage in mV.
-
-    Returns:
-        Steady-state inactivation probability in [0, 1].
-    """
-    return 1.0 / (1.0 + safe_exp(-(V - _TRN_FT_HALF) / _TRN_FT_SLOPE))
-
-
-def _trn_tau_ft(V: float) -> float:
-    """Sigmoid voltage-dependent time constant for the TRN ICaT ``ft`` gate.
-
-    Small at hyperpolarized V (≈ ``_TRN_FT_TAU_MIN`` = 20 ms) and large at
-    depolarized V (≈ ``_TRN_FT_TAU_MAX`` = 200 ms), with a smooth sigmoid
-    transition centered at V = −50 mV (slope 5 mV).  This shape preserves
-    rest stability at −80 mV (fast ft equilibration) while sustaining the
-    LTS plateau long enough for 5+ Na⁺ spikes (slow ft inactivation at
-    plateau voltages of −30 to −10 mV).
-
-    Args:
-        V: Membrane voltage in mV.
-
-    Returns:
-        Time constant in ms.
-    """
-    sigmoid = 1.0 / (1.0 + safe_exp(-(V - _TRN_FT_TAU_VHALF) / _TRN_FT_TAU_SLOPE))
-    return _TRN_FT_TAU_MIN + (_TRN_FT_TAU_MAX - _TRN_FT_TAU_MIN) * sigmoid
-
-
-def _alpha_ft_trn_impl(V: float, ca_i: float) -> float:
-    """Forward rate for the TRN ICaT inactivation gate ft.
-
-    Derived as ``alpha_ft = ft_inf / tau_ft``.
-
-    Args:
-        V: Membrane voltage in mV.
-        ca_i: Intracellular Ca²⁺ concentration in mM (ignored).
-
-    Returns:
-        Forward rate alpha_ft in 1/ms.
-    """
-    return _trn_ft_inf(V) / _trn_tau_ft(V)
-
-
-_alpha_ft_trn = VoltageOnlyFn(_alpha_ft_trn_impl)
-
-
-def _beta_ft_trn_impl(V: float, ca_i: float) -> float:
-    """Backward rate for the TRN ICaT inactivation gate ft.
-
-    Derived as ``beta_ft = (1 - ft_inf) / tau_ft``.
-
-    Args:
-        V: Membrane voltage in mV.
-        ca_i: Intracellular Ca²⁺ concentration in mM (ignored).
-
-    Returns:
-        Backward rate beta_ft in 1/ms.
-    """
-    return (1.0 - _trn_ft_inf(V)) / _trn_tau_ft(V)
-
-
-_beta_ft_trn = VoltageOnlyFn(_beta_ft_trn_impl)
+# ft steady state: the Destexhe (1994) curve used by make_icat_channel
+# (half-point −80 mV, slope −9 mV), so ft_inf = 0.50 at the TRN resting
+# potential of −80 mV: half de-inactivated, enabling the post-inhibitory
+# rebound burst.  tau_ft rises smoothly from TAU_MIN (≈ 20 ms, hyperpolarized)
+# to TAU_MAX (≈ 200 ms, depolarized) around −50 mV (slope 5 mV): fast ft
+# equilibration keeps rest stable at −80 mV, while slow inactivation at
+# plateau voltages (−30 to −10 mV) sustains the LTS for 5+ Na⁺ spikes.
+_alpha_ft_trn, _beta_ft_trn = inf_tau(
+    inf=Sigmoid(1.0, _TRN_FT_HALF, _TRN_FT_SLOPE),
+    tau=_TRN_FT_TAU_MIN
+    + (_TRN_FT_TAU_MAX - _TRN_FT_TAU_MIN)
+    * Sigmoid(1.0, _TRN_FT_TAU_VHALF, _TRN_FT_TAU_SLOPE),
+)
 
 
 def make_trn_icat_channel(

@@ -11,8 +11,7 @@ All rate functions are derived from steady-state (x_inf) and time-constant
 """
 
 from ..electrochemistry import boltzmann_cosh_rates
-from ..rates import VoltageOnlyFn
-from ..utils import safe_exp
+from ..rates import Exp, Sigmoid, inf_tau
 from .base import GatingVariable, IonChannel, IonSpecies, NernstSpec
 
 __all__ = [
@@ -20,90 +19,17 @@ __all__ = [
 ]
 
 
-def _stn_alpha_m_impl(V: float, ca_i: float) -> float:
-    """Forward rate for STN Na⁺ activation gate m (Otsuka et al. 2004).
+# Na⁺ activation gate m (Otsuka et al. 2004):
+#   m_inf(V) = 1 / (1 + exp(−(V + 40) / 8)),  τ_m = 0.2 ms
+_stn_alpha_m, _stn_beta_m = inf_tau(Sigmoid(1.0, -40.0, 8.0), 0.2)
 
-    Derived from m_inf(V) = 1/(1 + exp(−(V + 40)/8)) and τ_m = 0.2 ms.
-
-    Args:
-        V: Membrane voltage in mV.
-        ca_i: Intracellular Ca²⁺ concentration in mM (accepted but ignored).
-
-    Returns:
-        Forward rate in 1/ms.
-    """
-    m_inf = 1.0 / (1.0 + safe_exp(-(V + 40.0) / 8.0))
-    return m_inf / 0.2
-
-
-_stn_alpha_m = VoltageOnlyFn(_stn_alpha_m_impl)
-
-
-def _stn_beta_m_impl(V: float, ca_i: float) -> float:
-    """Backward rate for STN Na⁺ activation gate m (Otsuka et al. 2004).
-
-    Derived from m_inf(V) = 1/(1 + exp(−(V + 40)/8)) and τ_m = 0.2 ms.
-
-    Args:
-        V: Membrane voltage in mV.
-        ca_i: Intracellular Ca²⁺ concentration in mM (accepted but ignored).
-
-    Returns:
-        Backward rate in 1/ms.
-    """
-    m_inf = 1.0 / (1.0 + safe_exp(-(V + 40.0) / 8.0))
-    return (1.0 - m_inf) / 0.2
-
-
-_stn_beta_m = VoltageOnlyFn(_stn_beta_m_impl)
-
-
-def _stn_alpha_h_impl(V: float, ca_i: float) -> float:
-    """Forward rate for STN Na⁺ inactivation gate h (Otsuka et al. 2004).
-
-    Derived from:
-      h_inf(V)   = 1/(1 + exp((V + 45.5)/6.4))
-      1/τ_h(V)   = 0.128·exp(−(V + 38)/18) + 4/(1 + exp(−(V + 15)/5))
-
-    Args:
-        V: Membrane voltage in mV.
-        ca_i: Intracellular Ca²⁺ concentration in mM (accepted but ignored).
-
-    Returns:
-        Forward rate in 1/ms.
-    """
-    h_inf = 1.0 / (1.0 + safe_exp((V + 45.5) / 6.4))
-    inv_tau_h = 0.128 * safe_exp(-(V + 38.0) / 18.0) + 4.0 / (
-        1.0 + safe_exp(-(V + 15.0) / 5.0)
-    )
-    return h_inf * inv_tau_h
-
-
-_stn_alpha_h = VoltageOnlyFn(_stn_alpha_h_impl)
-
-
-def _stn_beta_h_impl(V: float, ca_i: float) -> float:
-    """Backward rate for STN Na⁺ inactivation gate h (Otsuka et al. 2004).
-
-    Derived from:
-      h_inf(V)   = 1/(1 + exp((V + 45.5)/6.4))
-      1/τ_h(V)   = 0.128·exp(−(V + 38)/18) + 4/(1 + exp(−(V + 15)/5))
-
-    Args:
-        V: Membrane voltage in mV.
-        ca_i: Intracellular Ca²⁺ concentration in mM (accepted but ignored).
-
-    Returns:
-        Backward rate in 1/ms.
-    """
-    h_inf = 1.0 / (1.0 + safe_exp((V + 45.5) / 6.4))
-    inv_tau_h = 0.128 * safe_exp(-(V + 38.0) / 18.0) + 4.0 / (
-        1.0 + safe_exp(-(V + 15.0) / 5.0)
-    )
-    return (1.0 - h_inf) * inv_tau_h
-
-
-_stn_beta_h = VoltageOnlyFn(_stn_beta_h_impl)
+# Na⁺ inactivation gate h (Otsuka et al. 2004):
+#   h_inf(V) = 1 / (1 + exp((V + 45.5) / 6.4))
+#   1/τ_h(V) = 0.128·exp(−(V + 38) / 18) + 4 / (1 + exp(−(V + 15) / 5))
+_stn_alpha_h, _stn_beta_h = inf_tau(
+    Sigmoid(1.0, -45.5, -6.4),
+    1.0 / (Exp(0.128, -38.0, -18.0) + Sigmoid(4.0, -15.0, 5.0)),
+)
 
 
 # ---------------------------------------------------------------------------

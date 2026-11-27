@@ -11,8 +11,7 @@ matching the CORTICAL_PYRAMIDAL preset's T_ref = 307.15 K (34 °C).
 """
 
 from ..constants import DEFAULT_G_MSKV
-from ..rates import SINGULARITY_THRESHOLD, VoltageOnlyFn
-from ..utils import safe_exp
+from ..rates import ExpLinear, Sigmoid, inf_tau
 from .base import GatingVariable, IonChannel, IonSpecies, NernstSpec
 
 __all__ = [
@@ -54,58 +53,26 @@ _MAINEN_SEJNOWSKI_BETA_PREFACTOR: float = 0.002 * MAINEN_SEJNOWSKI_KV_PRESCALE
 _MAINEN_SEJNOWSKI_KV_SLOPE: float = 9.0
 
 
-def _mainen_sejnowski_alpha_n_impl(V: float, ca_i: float) -> float:
-    """Forward rate for Mainen-Sejnowski Kv activation gate n.
+#: Forward rate for Mainen-Sejnowski Kv activation gate n:
+#: ``α_n(V) = A · (V − 25) / (1 − exp(−(V − 25) / 9))`` with
+#: ``A = 0.02 / ms × 2.55`` (the 23 → 34 °C Q10 = 2.3 pre-scale).  The
+#: removable singularity at V = 25 mV returns the limit ``A · 9 ≈ 0.459 / ms``.
+mainen_sejnowski_alpha_n = ExpLinear(
+    _MAINEN_SEJNOWSKI_ALPHA_PREFACTOR,
+    MAINEN_SEJNOWSKI_KV_VHALF,
+    _MAINEN_SEJNOWSKI_KV_SLOPE,
+)
 
-    Implements ``α_n(V) = A · (V - 25) / (1 - exp(-(V - 25) / 9))`` where
-    ``A = 0.02 / ms × 2.55`` bakes in the 23 → 34 °C Q10 = 2.3 pre-scale.
-    Has a removable singularity at V = 25 mV; the L'Hôpital limit
-    ``A · 9 ≈ 0.459 / ms`` is returned when
-    ``|V - 25| < SINGULARITY_THRESHOLD``.
-
-    Args:
-        V: Membrane voltage in mV.
-        ca_i: Intracellular Ca²⁺ concentration in mM (accepted but ignored).
-
-    Returns:
-        Forward rate in 1/ms.
-    """
-    x = V - MAINEN_SEJNOWSKI_KV_VHALF
-    if abs(x) < SINGULARITY_THRESHOLD:
-        return _MAINEN_SEJNOWSKI_ALPHA_PREFACTOR * _MAINEN_SEJNOWSKI_KV_SLOPE
-    denom = 1.0 - safe_exp(-x / _MAINEN_SEJNOWSKI_KV_SLOPE)
-    return _MAINEN_SEJNOWSKI_ALPHA_PREFACTOR * x / denom
-
-
-mainen_sejnowski_alpha_n = VoltageOnlyFn(_mainen_sejnowski_alpha_n_impl)
-
-
-def _mainen_sejnowski_beta_n_impl(V: float, ca_i: float) -> float:
-    """Backward rate for Mainen-Sejnowski Kv activation gate n.
-
-    Implements ``β_n(V) = -B · (V - 25) / (1 - exp((V - 25) / 9))`` where
-    ``B = 0.002 / ms × 2.55`` bakes in the 23 → 34 °C Q10 = 2.3 pre-scale.
-    The leading minus combines with the ``(V - 25)`` factor and the
-    denominator sign so β_n is positive for all V.  Has a removable
-    singularity at V = 25 mV; the L'Hôpital limit
-    ``B · 9 ≈ 0.0459 / ms`` is returned when
-    ``|V - 25| < SINGULARITY_THRESHOLD``.
-
-    Args:
-        V: Membrane voltage in mV.
-        ca_i: Intracellular Ca²⁺ concentration in mM (accepted but ignored).
-
-    Returns:
-        Backward rate in 1/ms.
-    """
-    x = V - MAINEN_SEJNOWSKI_KV_VHALF
-    if abs(x) < SINGULARITY_THRESHOLD:
-        return _MAINEN_SEJNOWSKI_BETA_PREFACTOR * _MAINEN_SEJNOWSKI_KV_SLOPE
-    denom = 1.0 - safe_exp(x / _MAINEN_SEJNOWSKI_KV_SLOPE)
-    return -_MAINEN_SEJNOWSKI_BETA_PREFACTOR * x / denom
-
-
-mainen_sejnowski_beta_n = VoltageOnlyFn(_mainen_sejnowski_beta_n_impl)
+#: Backward rate for Mainen-Sejnowski Kv activation gate n:
+#: ``β_n(V) = −B · (V − 25) / (1 − exp((V − 25) / 9))`` with
+#: ``B = 0.002 / ms × 2.55``.  This is the mirrored exp-linear form (both
+#: ``k`` and ``s`` negated), positive for all V; the singularity at V = 25 mV
+#: returns the limit ``B · 9 ≈ 0.0459 / ms``.
+mainen_sejnowski_beta_n = ExpLinear(
+    -_MAINEN_SEJNOWSKI_BETA_PREFACTOR,
+    MAINEN_SEJNOWSKI_KV_VHALF,
+    -_MAINEN_SEJNOWSKI_KV_SLOPE,
+)
 
 
 def make_mainen_sejnowski_kv_channel(g_max: float = DEFAULT_G_MSKV) -> IonChannel:
@@ -194,155 +161,45 @@ _MAINEN_SEJNOWSKI_NA_THINF: float = -65.0
 _MAINEN_SEJNOWSKI_NA_QINF: float = 6.2
 
 
-def _ms_na_trap(V: float, th: float, prefactor: float, q: float) -> float:
-    """Singularity-guarded ``a · (V - th) / (1 - exp(-(V - th) / q))``.
+# The canonical na.mod rates use its ``trap0(V, th, a, q)`` helper,
+# ``a · (V − th) / (1 − exp(−(V − th) / q))`` with the limit ``a · q`` at
+# V = th, which is ``ExpLinear(a, th, q)``.  Its voltage-flipped use
+# ``trap0(−V, −th, a, q)`` is the mirrored form ``ExpLinear(−a, th, −q)``.
 
-    Mirrors the ``trap0`` helper in the canonical na.mod entry.  Has a
-    removable singularity at V = th; the L'Hôpital limit ``a · q`` is
-    returned when ``|V - th| < SINGULARITY_THRESHOLD``.
+#: Forward rate for Mainen-Sejnowski Na activation gate m:
+#: ``α_m(V) = R_a · (V − tha) / (1 − exp(−(V − tha) / q_a))`` with
+#: R_a = 0.182 / ms × 2.55 (23 → 34 °C pre-scale) and tha = −35 mV; the
+#: limit at V = −35 mV is R_a · q_a ≈ 4.179 / ms.
+mainen_sejnowski_alpha_m = ExpLinear(
+    _MAINEN_SEJNOWSKI_NA_RA, MAINEN_SEJNOWSKI_NA_THA, _MAINEN_SEJNOWSKI_NA_QA
+)
 
-    Args:
-        V: Membrane voltage in mV.
-        th: Half-voltage parameter in mV.
-        prefactor: Rate-equation prefactor in 1/ms (already pre-scaled).
-        q: Slope parameter in mV.
+#: Backward rate for Mainen-Sejnowski Na activation gate m:
+#: ``β_m(V) = trap0(−V, −tha, R_b, q_a)`` per na.mod, with
+#: R_b = 0.124 / ms × 2.55.  Its singularity is at V = −35 mV, the same
+#: voltage as α_m's.
+mainen_sejnowski_beta_m = ExpLinear(
+    -_MAINEN_SEJNOWSKI_NA_RB, MAINEN_SEJNOWSKI_NA_THA, -_MAINEN_SEJNOWSKI_NA_QA
+)
 
-    Returns:
-        Rate in 1/ms.
-    """
-    x = V - th
-    if abs(x) < SINGULARITY_THRESHOLD:
-        return prefactor * q
-    return prefactor * x / (1.0 - safe_exp(-x / q))
-
-
-def _mainen_sejnowski_alpha_m_impl(V: float, ca_i: float) -> float:
-    """Forward rate for Mainen-Sejnowski Na activation gate m.
-
-    ``α_m(V) = R_a · (V - tha) / (1 - exp(-(V - tha) / q_a))`` with
-    R_a = 0.182 / ms × 2.55 (23 → 34 °C pre-scale) and tha = -35 mV.
-    Has a removable singularity at V = -35 mV; the L'Hôpital limit
-    R_a · q_a ≈ 4.179 / ms is returned within the threshold.
-
-    Args:
-        V: Membrane voltage in mV.
-        ca_i: Intracellular Ca²⁺ concentration in mM (accepted but ignored).
-
-    Returns:
-        Forward rate in 1/ms.
-    """
-    return _ms_na_trap(
-        V, MAINEN_SEJNOWSKI_NA_THA, _MAINEN_SEJNOWSKI_NA_RA, _MAINEN_SEJNOWSKI_NA_QA
+# Na inactivation gate h, from the M-S 1996 decoupled inf/tau formulation.
+# h_inf(V) = 1 / (1 + exp((V − thinf) / qinf)) approaches 1 at hyperpolarized
+# voltages (Na available) and 0 at depolarized voltages (Na inactivated).
+# τ_h is the inverse of the sum of the trap0 rates at thi1 (alpha branch,
+# voltage-positive) and thi2 (beta branch, voltage-negative), per na.mod.
+_MS_NA_H_INF = Sigmoid(1.0, _MAINEN_SEJNOWSKI_NA_THINF, -_MAINEN_SEJNOWSKI_NA_QINF)
+_MS_NA_H_TAU = 1.0 / (
+    ExpLinear(
+        _MAINEN_SEJNOWSKI_NA_RD, _MAINEN_SEJNOWSKI_NA_THI1, _MAINEN_SEJNOWSKI_NA_QI
     )
-
-
-mainen_sejnowski_alpha_m = VoltageOnlyFn(_mainen_sejnowski_alpha_m_impl)
-
-
-def _mainen_sejnowski_beta_m_impl(V: float, ca_i: float) -> float:
-    """Backward rate for Mainen-Sejnowski Na activation gate m.
-
-    Per the na.mod entry, β_m takes the same trap0 form with the voltage
-    sign flipped: ``β_m(V) = trap0(-V, -tha, R_b, q_a)``.  Singularity at
-    -V = -tha, i.e. V = -35 mV — same physical voltage as α_m's.
-
-    Args:
-        V: Membrane voltage in mV.
-        ca_i: Intracellular Ca²⁺ concentration in mM (accepted but ignored).
-
-    Returns:
-        Backward rate in 1/ms.
-    """
-    return _ms_na_trap(
-        -V,
-        -MAINEN_SEJNOWSKI_NA_THA,
-        _MAINEN_SEJNOWSKI_NA_RB,
-        _MAINEN_SEJNOWSKI_NA_QA,
+    + ExpLinear(
+        -_MAINEN_SEJNOWSKI_NA_RG, _MAINEN_SEJNOWSKI_NA_THI2, -_MAINEN_SEJNOWSKI_NA_QI
     )
+)
 
-
-mainen_sejnowski_beta_m = VoltageOnlyFn(_mainen_sejnowski_beta_m_impl)
-
-
-def _ms_na_h_inf(V: float) -> float:
-    """Steady-state h gate value for Mainen-Sejnowski Na.
-
-    ``h_inf(V) = 1 / (1 + exp((V - thinf) / qinf))`` with thinf = -65 mV
-    and qinf = 6.2 mV.  Approaches 1 at hyperpolarized voltages (Na
-    available) and 0 at depolarized voltages (Na inactivated).
-
-    Args:
-        V: Membrane voltage in mV.
-
-    Returns:
-        Steady-state h in [0, 1].
-    """
-    return 1.0 / (
-        1.0 + safe_exp((V - _MAINEN_SEJNOWSKI_NA_THINF) / _MAINEN_SEJNOWSKI_NA_QINF)
-    )
-
-
-def _ms_na_h_tau(V: float) -> float:
-    """Time constant of the h gate for Mainen-Sejnowski Na.
-
-    Computed from the alpha/beta sum of the trap0 functions evaluated at
-    thi1 (alpha branch, voltage-positive) and thi2 (beta branch,
-    voltage-negative); see na.mod.  Returns τ in ms.
-
-    Args:
-        V: Membrane voltage in mV.
-
-    Returns:
-        Time constant in ms.
-    """
-    a = _ms_na_trap(
-        V, _MAINEN_SEJNOWSKI_NA_THI1, _MAINEN_SEJNOWSKI_NA_RD, _MAINEN_SEJNOWSKI_NA_QI
-    )
-    b = _ms_na_trap(
-        -V,
-        -_MAINEN_SEJNOWSKI_NA_THI2,
-        _MAINEN_SEJNOWSKI_NA_RG,
-        _MAINEN_SEJNOWSKI_NA_QI,
-    )
-    return 1.0 / (a + b)
-
-
-def _mainen_sejnowski_alpha_h_impl(V: float, ca_i: float) -> float:
-    """Forward rate for Mainen-Sejnowski Na inactivation gate h.
-
-    Derived as ``α_h = h_inf / τ_h`` from the M-S 1996 decoupled
-    inf/tau formulation.  Mirrors the convention used by
-    :func:`_alpha_hr_impl` for INaR.
-
-    Args:
-        V: Membrane voltage in mV.
-        ca_i: Intracellular Ca²⁺ concentration in mM (accepted but ignored).
-
-    Returns:
-        Forward rate in 1/ms.
-    """
-    return _ms_na_h_inf(V) / _ms_na_h_tau(V)
-
-
-mainen_sejnowski_alpha_h = VoltageOnlyFn(_mainen_sejnowski_alpha_h_impl)
-
-
-def _mainen_sejnowski_beta_h_impl(V: float, ca_i: float) -> float:
-    """Backward rate for Mainen-Sejnowski Na inactivation gate h.
-
-    Derived as ``β_h = (1 - h_inf) / τ_h``.
-
-    Args:
-        V: Membrane voltage in mV.
-        ca_i: Intracellular Ca²⁺ concentration in mM (accepted but ignored).
-
-    Returns:
-        Backward rate in 1/ms.
-    """
-    return (1.0 - _ms_na_h_inf(V)) / _ms_na_h_tau(V)
-
-
-mainen_sejnowski_beta_h = VoltageOnlyFn(_mainen_sejnowski_beta_h_impl)
+#: Forward rate for Mainen-Sejnowski Na inactivation gate h: ``h_inf / τ_h``.
+#: Backward rate for the same gate: ``(1 − h_inf) / τ_h``.
+mainen_sejnowski_alpha_h, mainen_sejnowski_beta_h = inf_tau(_MS_NA_H_INF, _MS_NA_H_TAU)
 
 
 def make_mainen_sejnowski_na_channel(g_max: float) -> IonChannel:
