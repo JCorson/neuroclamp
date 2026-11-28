@@ -8,9 +8,10 @@ name: Release
 # against Python's stable ABI (abi3), so one wheel per platform serves every
 # supported Python version.
 #
-# - Push to main that touches the build (packaging metadata, the Rust core or
-#   these checks): build and smoke-test only. Pull requests do not run the
-#   wheel matrix; CI's rust job and `uv sync` build the core on Linux there.
+# - Push to main that touches the build configuration (packaging metadata,
+#   the Rust crate manifest or lockfile, or these checks): build and
+#   smoke-test only. Rust source has no platform-specific code, and CI's rust
+#   job and `uv sync` build and test it on Linux for every pull request.
 # - Manual run (workflow_dispatch): build and smoke-test; on main, also publish
 #   to TestPyPI. Use it as a dry run before tagging.
 # - Tag push vX.Y.Z: build, smoke-test, publish to TestPyPI, then PyPI. Path
@@ -22,7 +23,8 @@ on:
     paths:
       - pyproject.toml
       - uv.lock
-      - rust/**
+      - rust/Cargo.toml
+      - rust/Cargo.lock
       - tools/check_dist.py
       - tools/smoke_test.py
       - .github/workflows/release.yml
