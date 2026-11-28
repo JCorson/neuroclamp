@@ -299,6 +299,9 @@ impl Model {
         ca0: f64,
         dt: f64,
     ) -> Result<Vec<Trace>, String> {
+        if protocols.is_empty() {
+            return Err("current_external batch must have at least one sweep".into());
+        }
         protocols
             .par_iter()
             .map(|i_ext| self.simulate_current_clamp(i_ext, v0, gates0, ca0, dt))
@@ -376,6 +379,15 @@ mod tests {
         // sum([np.float64(0.1)] * 10) == 0.9999999999999999.
         assert_eq!(py_sum(&[0.1; 10]), 0.999_999_999_999_999_9);
         assert_eq!(py_sum(&[]), 0.0);
+    }
+
+    #[test]
+    fn empty_batch_is_rejected() {
+        let model = passive_model(0.3, -65.0, 1.0);
+        let err = model
+            .simulate_current_clamp_batch(&[], -65.0, &[], 0.0, 0.01)
+            .unwrap_err();
+        assert!(err.contains("at least one sweep"), "{err}");
     }
 
     #[test]
