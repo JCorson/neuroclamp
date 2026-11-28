@@ -54,26 +54,34 @@ class Model:
 
     def simulate_current_clamp_batch(
         self,
-        i_ext: NDArray[np.float64],
+        i_ext: Sequence[NDArray[np.float64]],
         v0: float,
         gates0: Sequence[float],
         ca0: float,
         dt: float,
-    ) -> NDArray[np.float64]:
-        """Run one sweep per row of ``i_ext`` in parallel from the same state.
+        num_threads: int | None = None,
+    ) -> list[NDArray[np.float64]]:
+        """Run one sweep per array in ``i_ext`` in parallel from the same state.
+
+        Every fresh current-clamp run starts from rest, so the sweeps share one
+        initial state.  Sweeps may differ in length.
 
         Args:
-            i_ext: ``(n_sweeps, n_steps)`` injected currents in µA/cm².
+            i_ext: Injected current per time step in µA/cm², one array per
+                sweep.
             v0: Initial membrane voltage in mV.
             gates0: Initial gate values, in spec order.
             ca0: Initial intracellular Ca²⁺ in mM.
             dt: Time step in ms.
+            num_threads: Number of threads to run the sweeps on.  ``None``
+                (default) uses one per CPU core.
 
         Returns:
-            An ``(n_sweeps, n_steps, n_columns)`` array.
+            One ``(n_steps, n_columns)`` array per sweep, in order.
 
         Raises:
-            ValueError: If ``i_ext`` is empty or ``gates0`` has the wrong length.
+            ValueError: If ``i_ext`` or any sweep is empty, or ``gates0`` has
+                the wrong length.
         """
 
     def simulate_voltage_clamp(
@@ -101,28 +109,31 @@ class Model:
 
     def simulate_voltage_clamp_batch(
         self,
-        v_protocol: NDArray[np.float64],
-        gates0: NDArray[np.float64],
+        v_protocol: Sequence[NDArray[np.float64]],
+        gates0: Sequence[Sequence[float]],
         ca0: Sequence[float],
         dt: float,
-    ) -> NDArray[np.float64]:
-        """Run one voltage-clamp sweep per row of ``v_protocol`` in parallel.
+        num_threads: int | None = None,
+    ) -> list[NDArray[np.float64]]:
+        """Run one voltage-clamp sweep per array in ``v_protocol`` in parallel.
 
         Each sweep starts from its own state, since a voltage-clamp run starts
-        from the steady state at its protocol's first voltage.
+        from the steady state at its protocol's first voltage.  Sweeps may
+        differ in length.
 
         Args:
-            v_protocol: ``(n_sweeps, n_steps)`` prescribed voltages in mV.
-            gates0: ``(n_sweeps, n_gates)`` initial gate values, one row per
-                sweep, in spec order.
+            v_protocol: Prescribed voltage per time step in mV, one array per
+                sweep.
+            gates0: Initial gate values, one sequence per sweep, in spec order.
             ca0: Initial intracellular Ca²⁺ in mM, one value per sweep.
             dt: Time step in ms.
+            num_threads: Number of threads to run the sweeps on.  ``None``
+                (default) uses one per CPU core.
 
         Returns:
-            An ``(n_sweeps, n_steps, n_columns)`` array.
+            One ``(n_steps, n_columns)`` array per sweep, in order.
 
         Raises:
-            ValueError: If ``v_protocol`` is empty, ``gates0`` or ``ca0`` does
-                not have one entry per sweep, or a row of ``gates0`` has the
-                wrong length.
+            ValueError: If ``v_protocol`` or any sweep is empty, or ``gates0`` or
+                ``ca0`` does not have one entry of the right length per sweep.
         """
