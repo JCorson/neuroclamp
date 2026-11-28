@@ -98,9 +98,11 @@ in Rust, typically 30 to 90 times faster:
 ```python
 result = neuroclamp.simulate_current_clamp(neuron, stimulus, backend="rust")
 result = neuroclamp.simulate_voltage_clamp(neuron, command, backend="rust")
-results = list(neuroclamp.simulate_batch(
-    neuron, sweeps, neuroclamp.simulate_current_clamp, backend="rust"
-))
+results = list(
+    neuroclamp.simulate_batch(
+        neuron, sweeps, neuroclamp.simulate_current_clamp, backend="rust"
+    )
+)
 ```
 
 With `simulate_batch`, the Rust backend runs the whole family in one call, its
