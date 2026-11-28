@@ -62,10 +62,10 @@ listed under **Changed** or **Removed**.
   channels saw an E_Ca of about +286 mV instead of about +125 mV, so their
   inward current was far too large. This changes results for such neurons in
   `simulate_voltage_clamp`, `simulate_current_clamp` and continuous mode in
-  the app; the built-in presets are unaffected. `initial_ca_i` in
-  `simulate_voltage_clamp_from_state` and `simulate_current_clamp_from_state`
-  now defaults to the same starting Ca²⁺ as the fresh-run functions instead
-  of 0.0.
+  the app; the built-in presets are unaffected. `find_zero_current_voltage()`
+  and `find_coupled_equilibrium()` use the same `Ca_in`, so the resting
+  potential they return no longer drifts when simulated, and
+  `find_coupled_equilibrium()` returns `Ca_in` instead of 0.0 as its Ca²⁺.
 
 ## [0.1.0] - 2026-11-25
 
