@@ -150,6 +150,31 @@ def test_rust_backend_rejects_mismatched_gating_state() -> None:
         )
 
 
+def test_rust_backend_reports_duplicate_gate_names() -> None:
+    """Gate names repeated across channels are named as the problem."""
+    gate = GatingVariable(
+        name="n",
+        power=1,
+        alpha=ExpLinear(0.01, -55.0, 10.0),
+        beta=Sigmoid(0.125, -65.0, -80.0),
+    )
+    neuron = Neuron(
+        channels=tuple(
+            IonChannel(
+                name=name,
+                g_max=1.0,
+                gating_variables=(gate,),
+                reversal_spec=NernstSpec(IonSpecies.POTASSIUM),
+            )
+            for name in ("K1", "K2")
+        )
+    )
+    with pytest.raises(ValueError, match="unique across channels"):
+        nc.simulate_current_clamp_from_state(
+            neuron, _STIMULUS, -65.0, {"n": 0.3}, backend="rust"
+        )
+
+
 @pytest.mark.parametrize("backend", ["numba", "Rust", ""])
 def test_unknown_backend_is_rejected(backend) -> None:
     """Only ``"python"`` and ``"rust"`` are accepted backend names.

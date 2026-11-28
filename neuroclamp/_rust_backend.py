@@ -54,11 +54,15 @@ def simulate_current_clamp_rust(
     Raises:
         neuroclamp._spec.UnloweredRateError: If a gate's rate is not built
             from the standard expression forms.
-        ValueError: If ``initial_gating_state`` does not have exactly the
-            neuron's gate names.
+        ValueError: If gate names repeat across channels, or if
+            ``initial_gating_state`` does not have exactly the neuron's gate
+            names.
     """
     from . import _core
 
+    # Lower first: it rejects duplicate gate names, which would otherwise
+    # surface below as a confusing key mismatch.
+    spec = lower(neuron)
     gates = neuron.all_gating_variables
     expected = sorted(g.name for g in gates)
     if sorted(initial_gating_state) != expected:
@@ -66,7 +70,7 @@ def simulate_current_clamp_rust(
             "gating_state keys do not match the neuron's gating variables: "
             f"got {sorted(initial_gating_state)}, expected {expected}"
         )
-    model = _core.Model(json.dumps(lower(neuron)))
+    model = _core.Model(json.dumps(spec))
     # The same expression as the Python backend's time step, so both use the
     # identical dt and time axis.
     dt_ms = 1.0 / SIM_SAMPLING_FREQ * 1000.0
