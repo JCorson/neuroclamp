@@ -1062,31 +1062,56 @@ def simulate_batch(
         ["Neuron", np.ndarray], SimulationResult
     ] = simulate_voltage_clamp,
     max_workers: int | None = None,
+    *,
+    backend: Backend = "python",
 ) -> Iterator[SimulationResult]:
     """Run multiple simulation protocols in parallel and yield results in order.
 
-    Each protocol is submitted to a process pool and executed independently
-    (fresh initial conditions per protocol).  Results are yielded in submission
-    order so callers can process them progressively as simulations complete.
+    Each protocol runs independently, with fresh initial conditions, exactly
+    as ``simulate_fn(neuron, protocol)`` would.  Results are yielded in
+    protocol order.
+
+    With ``backend="python"`` (default), each protocol is submitted to a
+    process pool, and results are yielded as they complete in order, so
+    callers can process them progressively.  With ``backend="rust"``, the
+    whole family runs in one call to the compiled core, which runs the sweeps
+    in parallel on a thread pool; it is typically tens of times faster, and
+    the results are yielded once all sweeps have finished.
 
     An empty *protocols* sequence yields nothing.  A single-element sequence
-    is equivalent to calling *simulate_fn* directly, but still routed through
-    the pool.
+    is equivalent to calling *simulate_fn* directly.
 
     Args:
         neuron: The conductance-based neuron model to simulate.
         protocols: Sequence of protocol arrays, each passed individually to
-            *simulate_fn*.
+            *simulate_fn*.  They may differ in length.
         simulate_fn: The simulation function to apply to each protocol.
             Defaults to :func:`simulate_voltage_clamp`; pass
             :func:`simulate_current_clamp` for current-clamp batch runs.
-        max_workers: Maximum number of worker processes.  ``None`` (default)
-            uses the CPU count.
+        max_workers: Maximum number of worker processes for the Python
+            backend.  ``None`` (default) uses the CPU count.  The Rust backend
+            uses one thread per CPU core and ignores it.
+        backend: ``"python"`` (default) or ``"rust"``.  The Rust backend runs
+            :func:`simulate_current_clamp` and :func:`simulate_voltage_clamp`
+            only, and needs every gate to be built from the rate expressions
+            in :mod:`neuroclamp.rates`.
 
     Yields:
         Structured arrays in the same order as *protocols*, one per protocol.
+
+    Raises:
+        ValueError: If ``backend`` is not a known backend; with
+            ``backend="rust"``, if *simulate_fn* is not
+            :func:`simulate_current_clamp` or :func:`simulate_voltage_clamp`,
+            or a protocol is empty or not finite.
+        TypeError: With ``backend="rust"``, if a gate's rate cannot be
+            compiled.
     """
+    _check_backend(backend)
     if not protocols:
+        return
+    if backend == "rust":
+        yield from _simulate_batch_rust(neuron, protocols, simulate_fn)
         return
 
     with ProcessPoolExecutor(max_workers=max_workers) as executor:
@@ -1095,3 +1120,57 @@ def simulate_batch(
         ]
         for future in futures:
             yield future.result()
+
+
+def _simulate_batch_rust(
+    neuron: "Neuron",
+    protocols: Sequence[np.ndarray],
+    simulate_fn: Callable[["Neuron", np.ndarray], SimulationResult],
+) -> list[SimulationResult]:
+    """Run a protocol family on the Rust core with fresh initial conditions.
+
+    The initial state of each sweep is the one *simulate_fn* would start from:
+    current clamp starts every sweep at rest, and voltage clamp starts each at
+    steady state at its first voltage.
+
+    Args:
+        neuron: The conductance-based neuron model to simulate.
+        protocols: Non-empty sequence of protocol arrays.
+        simulate_fn: :func:`simulate_current_clamp` or
+            :func:`simulate_voltage_clamp`.
+
+    Returns:
+        One structured array per protocol, in order.
+
+    Raises:
+        ValueError: If *simulate_fn* has no Rust counterpart, or a protocol is
+            empty or not finite.
+    """
+    # Imported here: the Rust path imports _spec, which imports this module.
+    from ._rust_backend import (
+        simulate_current_clamp_batch_rust,
+        simulate_voltage_clamp_batch_rust,
+    )
+
+    if simulate_fn is simulate_current_clamp:
+        for protocol in protocols:
+            _check_current_external(protocol)
+        ca_i = _default_initial_ca_i(neuron, use_ca_init=True)
+        gating_state = _initialize_gating_variables(neuron, neuron.v_rest, ca_i)
+        return simulate_current_clamp_batch_rust(
+            neuron, protocols, neuron.v_rest, gating_state, ca_i
+        )
+    if simulate_fn is simulate_voltage_clamp:
+        for protocol in protocols:
+            _check_voltage_protocol(protocol)
+        ca_i = _default_initial_ca_i(neuron, use_ca_init=False)
+        gating_states = [
+            _initialize_gating_variables(neuron, protocol[0], ca_i)
+            for protocol in protocols
+        ]
+        return simulate_voltage_clamp_batch_rust(neuron, protocols, gating_states, ca_i)
+    name = getattr(simulate_fn, "__name__", repr(simulate_fn))
+    raise ValueError(
+        "simulate_batch(backend='rust') runs simulate_current_clamp or "
+        f"simulate_voltage_clamp, not {name}."
+    )
