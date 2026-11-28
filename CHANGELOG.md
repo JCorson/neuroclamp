@@ -49,6 +49,12 @@ listed under **Changed** or **Removed**.
   that reads a built-in rate's `.fn`, checks `isinstance(rate, VoltageOnlyFn)`,
   or reads fields of the old `boltzmann_cosh_rates()` results (`half`,
   `slope`, `is_alpha`, ...) must be updated.
+- **Breaking:** `initial_ca_i` in `simulate_voltage_clamp_from_state()` and
+  `simulate_current_clamp_from_state()` now defaults to the Ca²⁺ a fresh run
+  starts from (`ca_init` or `ca_rest` with Ca²⁺ dynamics, `Ca_in` without)
+  instead of 0.0. Calls that omit it on a neuron with Ca²⁺ channels or Ca²⁺
+  dynamics give different results; pass `initial_ca_i=0.0` to keep the old
+  starting point.
 
 ### Removed
 
