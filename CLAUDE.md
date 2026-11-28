@@ -52,7 +52,7 @@ Issue links **are** appropriate when documenting an open limitation that has not
 ## Architecture
 
 - `neuroclamp/` — pure Python library, **no Reflex dependency**. All simulation logic lives here. Notable subpackages: `neuroclamp/analysis/` (post-hoc metrics: AP metrics, F-I, G-V, I-V, passive properties, burst metrics, etc.) and `neuroclamp/protocols/` (current/voltage protocol builders).
-- `rust/` — the compiled current-clamp core, a Rust crate built into the extension module `neuroclamp._core`. It integrates a neuron described as data: `neuroclamp/_spec.py` lowers a `Neuron` to a JSON model spec (whose format it documents), and `neuroclamp/_rust_backend.py` runs it for `backend="rust"`. The integrator follows the Python one's order of floating-point operations, so the two agree to within rounding; keep them in step when changing either.
+- `rust/` — the compiled simulation core (current and voltage clamp), a Rust crate built into the extension module `neuroclamp._core`. It integrates a neuron described as data: `neuroclamp/_spec.py` lowers a `Neuron` to a JSON model spec (whose format it documents), and `neuroclamp/_rust_backend.py` runs it for `backend="rust"`. Its integrators follow the Python ones' order of floating-point operations, so the two backends agree to within rounding; keep them in step when changing either.
 - `neuroclamp_ui/` — Reflex application. State is split across `neuroclamp_ui/state/` (neuron, protocol, simulation, analysis, visibility, log); components are Python functions returning `rx.Component`.
 
 Keep these layers cleanly separated: do not import Reflex types into `neuroclamp/`, and do not import `neuroclamp_ui` modules from `neuroclamp/`.

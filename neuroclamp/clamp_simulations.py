@@ -41,8 +41,8 @@ else:
 
 logger = logging.getLogger(__name__)
 
-#: Simulation backends for current clamp: the pure-Python integrator or the
-#: same integrator compiled in Rust (``neuroclamp._core``).
+#: Simulation backends: the pure-Python integrators or the same integrators
+#: compiled in Rust (``neuroclamp._core``).
 Backend = Literal["python", "rust"]
 
 #: Voltage clamp bounds for the current-clamp RK4 integrator (mV).
@@ -723,6 +723,8 @@ def _simulate_current_clamp_core(
 def simulate_voltage_clamp(
     neuron: "Neuron",
     voltage_protocol: np.ndarray,
+    *,
+    backend: Backend = "python",
 ) -> SimulationResult:
     """Simulate a voltage clamp experiment using the conductance-based neuron model.
 
@@ -745,21 +747,28 @@ def simulate_voltage_clamp(
         neuron: The conductance-based neuron model to simulate.
         voltage_protocol: Voltage values in mV to clamp the membrane at for each
             time step. The length of the array determines the simulation duration.
+        backend: ``"python"`` (default) or ``"rust"``.  The Rust backend runs
+            the same integrator compiled, much faster; it needs every gate to
+            be built from the rate expressions in :mod:`neuroclamp.rates`.
+            Both give the same result to within rounding.
 
     Returns:
         Structured array with one element per time step. Field ``"time"`` holds
         the time axis in milliseconds. Remaining fields: ``"voltage"``,
         ``"Itotal"``, per-channel current fields, gating variable fields, and
         optionally ``"ca_i"``.
-    """
-    if len(voltage_protocol) == 0:
-        raise ValueError("voltage_protocol must not be empty.")
-    if not np.all(np.isfinite(voltage_protocol)):
-        raise ValueError("voltage_protocol must not contain NaN or Inf values.")
 
+    Raises:
+        ValueError: If ``voltage_protocol`` is empty or not finite, or
+            ``backend`` is not a known backend.
+        TypeError: With ``backend="rust"``, if a gate's rate cannot be
+            compiled (for example a :class:`~neuroclamp.rates.VoltageOnlyFn`).
+    """
+    _check_voltage_protocol(voltage_protocol)
+    _check_backend(backend)
     ca_i = _default_initial_ca_i(neuron, use_ca_init=False)
     gating_state = _initialize_gating_variables(neuron, voltage_protocol[0], ca_i)
-    return _simulate_voltage_clamp_core(neuron, voltage_protocol, gating_state, ca_i)
+    return _run_voltage_clamp(neuron, voltage_protocol, gating_state, ca_i, backend)
 
 
 def _check_current_external(current_external: np.ndarray) -> None:
@@ -775,6 +784,49 @@ def _check_current_external(current_external: np.ndarray) -> None:
         raise ValueError("current_external must not be empty.")
     if not np.all(np.isfinite(current_external)):
         raise ValueError("current_external must not contain NaN or Inf values.")
+
+
+def _check_voltage_protocol(voltage_protocol: np.ndarray) -> None:
+    """Reject an empty or non-finite voltage protocol.
+
+    Args:
+        voltage_protocol: Prescribed voltage in mV.
+
+    Raises:
+        ValueError: If the protocol is empty or contains NaN or Inf.
+    """
+    if len(voltage_protocol) == 0:
+        raise ValueError("voltage_protocol must not be empty.")
+    if not np.all(np.isfinite(voltage_protocol)):
+        raise ValueError("voltage_protocol must not contain NaN or Inf values.")
+
+
+def _run_voltage_clamp(
+    neuron: "Neuron",
+    voltage_protocol: np.ndarray,
+    gating_state: dict[str, float],
+    ca_i: float,
+    backend: Backend,
+) -> SimulationResult:
+    """Run a voltage-clamp simulation on the chosen backend.
+
+    Args:
+        neuron: The conductance-based neuron model to simulate.
+        voltage_protocol: Prescribed voltage in mV, already validated.
+        gating_state: Initial gating variable values; the Python backend
+            mutates it.
+        ca_i: Initial intracellular Ca²⁺ concentration in mM.
+        backend: ``"python"`` or ``"rust"``.
+
+    Returns:
+        Structured array with one element per time step.
+    """
+    if backend == "rust":
+        # Imported here: the Rust path imports _spec, which imports this module.
+        from ._rust_backend import simulate_voltage_clamp_rust
+
+        return simulate_voltage_clamp_rust(neuron, voltage_protocol, gating_state, ca_i)
+    return _simulate_voltage_clamp_core(neuron, voltage_protocol, gating_state, ca_i)
 
 
 def _check_backend(backend: str) -> None:
@@ -882,6 +934,8 @@ def simulate_voltage_clamp_from_state(
     voltage_protocol: np.ndarray,
     initial_gating_state: dict[str, float],
     initial_ca_i: float | None = None,
+    *,
+    backend: Backend = "python",
 ) -> SimulationResult:
     """Simulate a voltage clamp experiment starting from an explicit gating state.
 
@@ -899,14 +953,21 @@ def simulate_voltage_clamp_from_state(
         initial_ca_i: Initial intracellular Ca²⁺ concentration in mM.  When
             ``None``, the value :func:`simulate_voltage_clamp` starts from:
             ``calcium_dynamics.ca_rest``, or ``neuron.Ca_in`` without dynamics.
+        backend: ``"python"`` (default) or ``"rust"``; see
+            :func:`simulate_voltage_clamp`.
 
     Returns:
         Structured array with the same fields as :func:`simulate_voltage_clamp`.
+
+    Raises:
+        ValueError: If ``voltage_protocol`` is empty or not finite, ``backend``
+            is not a known backend, or ``initial_gating_state`` does not have
+            exactly the neuron's gate names.
+        TypeError: With ``backend="rust"``, if a gate's rate cannot be
+            compiled.
     """
-    if len(voltage_protocol) == 0:
-        raise ValueError("voltage_protocol must not be empty.")
-    if not np.all(np.isfinite(voltage_protocol)):
-        raise ValueError("voltage_protocol must not contain NaN or Inf values.")
+    _check_voltage_protocol(voltage_protocol)
+    _check_backend(backend)
 
     num_time_steps = len(voltage_protocol)
     duration_ms = (num_time_steps - 1) / SIM_SAMPLING_FREQ * 1000.0
@@ -918,8 +979,8 @@ def simulate_voltage_clamp_from_state(
     )
     if initial_ca_i is None:
         initial_ca_i = _default_initial_ca_i(neuron, use_ca_init=False)
-    result = _simulate_voltage_clamp_core(
-        neuron, voltage_protocol, dict(initial_gating_state), initial_ca_i
+    result = _run_voltage_clamp(
+        neuron, voltage_protocol, dict(initial_gating_state), initial_ca_i, backend
     )
     logger.debug(
         "simulate_voltage_clamp_from_state: complete — %d steps", num_time_steps

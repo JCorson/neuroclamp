@@ -191,22 +191,16 @@ def simulate_run(run: GoldenRun, backend: Backend = "python") -> np.ndarray:
 
     Args:
         run: The run to simulate.
-        backend: Simulation backend for current-clamp runs.  Voltage clamp
-            has only the Python backend.
+        backend: Simulation backend.
 
     Returns:
         The structured simulation result.
-
-    Raises:
-        ValueError: If a non-Python backend is requested for voltage clamp.
     """
     neuron = NEURON_PRESETS[run.neuron]()
     stimulus = _protocol(run.neuron, run.protocol)[run.sweep]
     if run.clamp_mode == CURRENT_CLAMP:
         return simulate_current_clamp(neuron, stimulus, backend=backend)
-    if backend != "python":
-        raise ValueError(f"voltage clamp has no {backend!r} backend")
-    return simulate_voltage_clamp(neuron, stimulus)
+    return simulate_voltage_clamp(neuron, stimulus, backend=backend)
 
 
 def compared_fields(run: GoldenRun, result: np.ndarray) -> list[str]:

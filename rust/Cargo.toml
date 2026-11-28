@@ -5,7 +5,7 @@ edition = "2024"
 rust-version = "1.85"
 publish = false
 license = "GPL-3.0-or-later"
-description = "Compiled current-clamp integrator for the neuroclamp Python package."
+description = "Compiled current- and voltage-clamp integrators for the neuroclamp Python package."
 
 [lib]
 # Imported from Python as `neuroclamp._core` (see [tool.maturin] in

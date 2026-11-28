@@ -1,4 +1,4 @@
-"""Current-clamp simulations on the Rust backend agree with the Python backend.
+"""Simulations on the Rust backend agree with the Python backend.
 
 The Rust core follows the Python integrator's order of floating-point
 operations; the only differences come from integer powers above 2, which it
@@ -24,6 +24,11 @@ PRESET_IDS = [key for key, _ in PRESETS]
 _STEPS = 1600
 _STIMULUS = np.zeros(_STEPS)
 _STIMULUS[200:1200] = 10.0
+
+# Hold at -80 mV, step to 0 mV for 20 ms, then return: activates and
+# inactivates every channel type in the presets.
+_COMMAND = np.full(_STEPS, -80.0)
+_COMMAND[200:1000] = 0.0
 
 
 def _assert_results_match(python: np.ndarray, rust: np.ndarray) -> None:
@@ -185,3 +190,79 @@ def test_unknown_backend_is_rejected(backend) -> None:
     neuron = nc.NEURON_PRESETS["Squid Giant Axon (Classic HH)"]()
     with pytest.raises(ValueError, match="backend must be"):
         nc.simulate_current_clamp(neuron, _STIMULUS, backend=backend)
+
+
+@pytest.mark.parametrize(("key", "factory"), PRESETS, ids=PRESET_IDS)
+def test_rust_voltage_clamp_matches_python_for_every_preset(key, factory) -> None:
+    """Every preset gives the same voltage-clamp result on both backends.
+
+    Args:
+        key: Preset name.
+        factory: Preset constructor.
+    """
+    neuron = factory()
+    python = nc.simulate_voltage_clamp(neuron, _COMMAND)
+    rust = nc.simulate_voltage_clamp(neuron, _COMMAND, backend="rust")
+    _assert_results_match(python, rust)
+
+
+def test_rust_voltage_clamp_from_state_matches_python() -> None:
+    """Continuing a voltage clamp from a mid-run state agrees across backends."""
+    neuron = nc.NEURON_PRESETS["Hippocampal CA1 Pyramidal Neuron"]()
+    first = nc.simulate_voltage_clamp(neuron, _COMMAND[:600])
+    last = first[-1]
+    gates = {g.name: float(last[g.name]) for g in neuron.all_gating_variables}
+    ca0 = float(last["ca_i"])
+    rest = _COMMAND[600:]
+    python = nc.simulate_voltage_clamp_from_state(neuron, rest, gates, ca0)
+    rust = nc.simulate_voltage_clamp_from_state(
+        neuron, rest, gates, ca0, backend="rust"
+    )
+    _assert_results_match(python, rust)
+
+
+@pytest.mark.parametrize("dynamics", [True, False], ids=["dynamics", "constant"])
+def test_rust_voltage_clamp_handles_calcium(dynamics) -> None:
+    """Voltage-clamp Ca²⁺ currents agree whether Ca²⁺ evolves or is constant.
+
+    Args:
+        dynamics: Whether the neuron has Ca²⁺ dynamics.
+    """
+    neuron = _calcium_channel_neuron(dynamics=dynamics)
+    python = nc.simulate_voltage_clamp(neuron, _COMMAND)
+    rust = nc.simulate_voltage_clamp(neuron, _COMMAND, backend="rust")
+    _assert_results_match(python, rust)
+
+
+def test_rust_voltage_clamp_rejects_uncompilable_rates() -> None:
+    """A plain-callable rate cannot run voltage clamp on the Rust backend."""
+    gate = GatingVariable(
+        name="w",
+        power=1,
+        alpha=VoltageOnlyFn(lambda v, ca: 0.1),
+        beta=ExpLinear(0.01, -55.0, 10.0),
+    )
+    neuron = Neuron(
+        channels=(
+            IonChannel(
+                name="Kx",
+                g_max=1.0,
+                gating_variables=(gate,),
+                reversal_spec=NernstSpec(IonSpecies.POTASSIUM),
+            ),
+        )
+    )
+    with pytest.raises(TypeError, match="channel 'Kx', gate 'w'"):
+        nc.simulate_voltage_clamp(neuron, _COMMAND, backend="rust")
+
+
+@pytest.mark.parametrize("backend", ["numba", "Rust", ""])
+def test_unknown_backend_is_rejected_in_voltage_clamp(backend) -> None:
+    """Voltage clamp rejects unknown backend names too.
+
+    Args:
+        backend: An invalid backend name.
+    """
+    neuron = nc.NEURON_PRESETS["Squid Giant Axon (Classic HH)"]()
+    with pytest.raises(ValueError, match="backend must be"):
+        nc.simulate_voltage_clamp(neuron, _COMMAND, backend=backend)
