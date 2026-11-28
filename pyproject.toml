@@ -47,20 +47,20 @@ Issues = "https://github.com/JCorson/neuroclamp/issues"
 Changelog = "https://github.com/JCorson/neuroclamp/blob/main/CHANGELOG.md"
 
 [build-system]
-requires = ["hatchling>=1.27"]
-build-backend = "hatchling.build"
+requires = ["maturin>=1.16,<2"]
+build-backend = "maturin"
 
-[tool.hatch.build.targets.wheel]
-packages = ["neuroclamp", "neuroclamp_ui"]
-
-[tool.hatch.build.targets.sdist]
-include = [
-    "/neuroclamp",
-    "/neuroclamp_ui",
-    "/README.md",
-    "/LICENSE",
-    "/CHANGELOG.md",
-]
+# maturin compiles the Rust crate in rust/ into the extension module
+# neuroclamp._core and packages it with the pure-Python neuroclamp package
+# (found next to this file, as the first part of module-name) and
+# neuroclamp_ui. The sdist also carries the Rust sources, so building from it
+# needs a Rust toolchain; the published wheels do not.
+[tool.maturin]
+manifest-path = "rust/Cargo.toml"
+module-name = "neuroclamp._core"
+python-packages = ["neuroclamp_ui"]
+include = [{ path = "CHANGELOG.md", format = "sdist" }]
+exclude = ["**/__pycache__/**", "**/*.py[cod]"]
 
 [tool.ruff]
 line-length = 88
@@ -130,4 +130,14 @@ docs = [
     "mkdocs>=1.6.1",
     "mkdocs-material>=9.6.0",
     "mkdocstrings[python]>=0.27.0",
+]
+
+[tool.uv]
+# Rebuild the project (and its Rust extension) when the Rust sources change,
+# not only when pyproject.toml does.
+cache-keys = [
+    { file = "pyproject.toml" },
+    { file = "rust/Cargo.toml" },
+    { file = "rust/Cargo.lock" },
+    { file = "rust/src/**/*.rs" },
 ]

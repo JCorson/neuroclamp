@@ -30,6 +30,29 @@ jobs:
       - name: Type check
         run: uvx ty check
 
+  rust:
+    # The compiled core in rust/: formatting, lints, and the pure-Rust tests
+    # (no Python needed with --no-default-features). The Python jobs build it
+    # as part of `uv sync`; the runner image ships a Rust toolchain.
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: rust
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Format
+        run: cargo fmt --check
+
+      - name: Lint
+        run: |
+          cargo clippy --all-targets --no-default-features -- -D warnings
+          cargo clippy --all-targets -- -D warnings
+
+      - name: Test
+        run: cargo test --no-default-features
+
   test:
     runs-on: ubuntu-latest
     strategy:

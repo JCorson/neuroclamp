@@ -90,6 +90,22 @@ channel, and the gating variables. Related entry points:
   resume a simulation from a saved gating state (used for continuous mode).
 - `simulate_batch` — run many protocols efficiently.
 
+### Compiled current clamp
+
+The current-clamp runners take `backend="rust"` to run the same integrator
+compiled in Rust, typically 30 to 90 times faster:
+
+```python
+result = neuroclamp.simulate_current_clamp(neuron, stimulus, backend="rust")
+```
+
+The result has the same fields and agrees with the default `backend="python"`
+to within rounding. The Rust backend needs every gate's rates to be built from
+the rate expressions in `neuroclamp.rates`, as all built-in channels are; a
+gate that wraps a plain Python function in `VoltageOnlyFn` or
+`CalciumDependentFn` raises a `TypeError` naming the channel and gate.
+Voltage clamp runs on the Python backend only.
+
 ## Analysis
 
 The `neuroclamp.analysis` subpackage turns a recorded trace into physiological

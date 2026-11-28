@@ -23,12 +23,22 @@ listed under **Changed** or **Removed**.
   compiles to a single Python function on first use, so it runs as fast as a
   hand-written rate function. A custom `Expr` subclass only needs to define
   `evaluate()`.
+- `simulate_current_clamp()` and `simulate_current_clamp_from_state()` take
+  `backend="rust"` to run current clamp on a compiled Rust integrator,
+  typically 30 to 90 times faster, with the same result to within rounding.
+  The default stays `backend="python"`. Every gate must be built from rate
+  expressions, as all built-in channels are.
 - `Rate.uses_calcium` reports whether a rate depends on intracellular Ca²⁺.
   Expressions derive it automatically; a custom `Rate` subclass that does not
   declare it is treated as Ca²⁺-dependent.
 
 ### Changed
 
+- `neuroclamp` now ships platform-specific wheels that include the compiled
+  simulation core, for Linux (x86_64 and aarch64), macOS (Intel and Apple
+  silicon) and Windows (x86_64). Each wheel serves Python 3.12 and later.
+  Installing from the source distribution on any other platform needs a Rust
+  toolchain.
 - **Breaking:** every built-in channel's gating rates are now rate
   expressions. Public rate objects such as `neuroclamp.channels.alpha_m`,
   `pospischil_alpha_m` and `mainen_sejnowski_beta_h` are `neuroclamp.rates`
@@ -39,6 +49,12 @@ listed under **Changed** or **Removed**.
   that reads a built-in rate's `.fn`, checks `isinstance(rate, VoltageOnlyFn)`,
   or reads fields of the old `boltzmann_cosh_rates()` results (`half`,
   `slope`, `is_alpha`, ...) must be updated.
+- **Breaking:** `initial_ca_i` in `simulate_voltage_clamp_from_state()` and
+  `simulate_current_clamp_from_state()` now defaults to the Ca²⁺ a fresh run
+  starts from (`ca_init` or `ca_rest` with Ca²⁺ dynamics, `Ca_in` without)
+  instead of 0.0. Calls that omit it on a neuron with Ca²⁺ channels or Ca²⁺
+  dynamics give different results; pass `initial_ca_i=0.0` to keep the old
+  starting point.
 
 ### Removed
 
@@ -52,10 +68,10 @@ listed under **Changed** or **Removed**.
   channels saw an E_Ca of about +286 mV instead of about +125 mV, so their
   inward current was far too large. This changes results for such neurons in
   `simulate_voltage_clamp`, `simulate_current_clamp` and continuous mode in
-  the app; the built-in presets are unaffected. `initial_ca_i` in
-  `simulate_voltage_clamp_from_state` and `simulate_current_clamp_from_state`
-  now defaults to the same starting Ca²⁺ as the fresh-run functions instead
-  of 0.0.
+  the app; the built-in presets are unaffected. `find_zero_current_voltage()`
+  and `find_coupled_equilibrium()` use the same `Ca_in`, so the resting
+  potential they return no longer drifts when simulated, and
+  `find_coupled_equilibrium()` returns `Ca_in` instead of 0.0 as its Ca²⁺.
 
 ## [0.1.0] - 2026-11-25
 

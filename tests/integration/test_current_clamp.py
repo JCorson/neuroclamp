@@ -7,7 +7,7 @@ import pytest
 
 from neuroclamp.clamp_simulations import simulate_current_clamp
 from neuroclamp.constants import DOPAMINERGIC, PURKINJE, SIM_SAMPLING_FREQ, STN, TRN
-from neuroclamp.neuron import Neuron  # noqa: F401  (used in type hints below)
+from neuroclamp.neuron import Neuron
 from neuroclamp.presets import (
     NEURON_PRESET_NAMES,
     NEURON_PRESETS,
@@ -433,3 +433,45 @@ def test_all_presets_stable_at_rest(preset_name: str) -> None:
         f"v_rest={neuron.v_rest:.1f} mV — v_rest may not be the zero-current "
         "equilibrium (run find_zero_current_voltage to compute the correct value)"
     )
+
+
+def test_zero_current_voltage_is_rest_for_calcium_channels_without_dynamics():
+    """The solved resting potential does not drift when simulated.
+
+    Without Ca²⁺ dynamics, the equilibrium solver and the simulation both
+    hold Ca²⁺ at ``Ca_in``, so they see the same E_Ca.  The neuron's resting
+    potential is set by a low-threshold Ca²⁺ conductance against a K⁺ leak,
+    so a mismatched E_Ca would move rest by tens of mV.
+    """
+    from neuroclamp import find_zero_current_voltage
+    from neuroclamp.channels import GatingVariable, IonChannel, IonSpecies, NernstSpec
+    from neuroclamp.rates import Sigmoid
+
+    gate = GatingVariable(
+        name="d",
+        power=2,
+        alpha=Sigmoid(1.0, -80.0, 5.0),
+        beta=Sigmoid(1.0, -80.0, -5.0),
+    )
+    neuron = Neuron(
+        channels=(
+            IonChannel(
+                name="CaT",
+                g_max=0.2,
+                gating_variables=(gate,),
+                reversal_spec=NernstSpec(IonSpecies.CALCIUM),
+                carries_calcium=True,
+            ),
+            IonChannel(
+                name="L",
+                g_max=1.0,
+                gating_variables=(),
+                reversal_spec=NernstSpec(IonSpecies.POTASSIUM),
+            ),
+        )
+    )
+    v_eq = find_zero_current_voltage(neuron)
+    result = simulate_current_clamp(
+        dataclasses.replace(neuron, v_rest=v_eq), np.zeros(5000)
+    )
+    assert result["voltage"][-1] == pytest.approx(v_eq, abs=1e-6)

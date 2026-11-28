@@ -58,12 +58,12 @@ def find_zero_current_voltage(
     zero.  This is the true zero-current resting potential — the voltage
     the neuron will settle to when no external current is injected.
 
-    Calcium dynamics are accounted for by using *ca_i* as the intracellular
-    Ca²⁺ concentration when evaluating calcium-dependent gating variables.
-    When *ca_i* is ``None`` (the default) the neuron's declared ``ca_rest``
-    is used, consistent with how
-    :func:`~neuroclamp.simulate_current_clamp` historically initialized the
-    state.  Pass an explicit value (e.g. from
+    *ca_i* is the intracellular Ca²⁺ concentration used for
+    calcium-dependent gating variables and the Ca²⁺ reversal potential.
+    When *ca_i* is ``None`` (the default) it is the concentration
+    :func:`~neuroclamp.simulate_current_clamp` starts from: the dynamics'
+    ``ca_rest``, or ``neuron.Ca_in`` (held constant) without Ca²⁺ dynamics.
+    Pass an explicit value (e.g. from
     :func:`find_coupled_equilibrium`) when you need to evaluate the
     zero-current voltage at a specific Ca²⁺ concentration.
 
@@ -74,9 +74,9 @@ def find_zero_current_voltage(
         v_max: Upper bound of the voltage search range in mV.
         tol: Convergence tolerance in mV.
         ca_i: Intracellular Ca²⁺ concentration in mM to use when evaluating
-            calcium-dependent gating variables.  ``None`` defaults to
-            ``neuron.calcium_dynamics.ca_rest`` (or 0.0 if no calcium
-            dynamics are configured).
+            calcium-dependent gating variables and E_Ca.  ``None`` defaults
+            to ``neuron.calcium_dynamics.ca_rest``, or to ``neuron.Ca_in``
+            if no calcium dynamics are configured.
 
     Returns:
         Voltage in mV at which total ionic current is zero.
@@ -94,7 +94,7 @@ def find_zero_current_voltage(
         else (
             neuron.calcium_dynamics.ca_rest
             if neuron.calcium_dynamics is not None
-            else 0.0
+            else neuron.Ca_in
         )
     )
 
@@ -125,9 +125,9 @@ def find_coupled_equilibrium(
 ) -> tuple[float, float]:
     """Find the coupled (V_ss, ca_i_ss) equilibrium for a neuron.
 
-    For neurons without calcium dynamics, equivalent to
-    :func:`find_zero_current_voltage` with ``ca_i = 0`` — returns
-    ``(V_ss, 0.0)``.
+    For neurons without calcium dynamics, Ca²⁺ is held at ``neuron.Ca_in``,
+    so this is :func:`find_zero_current_voltage` at that concentration and
+    returns ``(V_ss, neuron.Ca_in)``.
 
     For neurons *with* calcium dynamics, uses fixed-point iteration to
     simultaneously satisfy:
@@ -172,7 +172,9 @@ def find_coupled_equilibrium(
         RuntimeWarning: If *max_iter* iterations elapse without convergence.
     """
     if neuron.calcium_dynamics is None:
-        return find_zero_current_voltage(neuron, v_min, v_max, tol), 0.0
+        ca_i_fixed = neuron.Ca_in
+        V_fixed = find_zero_current_voltage(neuron, v_min, v_max, tol, ca_i=ca_i_fixed)
+        return V_fixed, ca_i_fixed
 
     cd = neuron.calcium_dynamics
     ca_i: float = cd.ca_rest

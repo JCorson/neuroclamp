@@ -1,22 +1,30 @@
 name: Release
 
-# Builds the sdist and wheel, smoke-tests the wheel in clean environments, and
-# publishes with PyPI Trusted Publishing (OIDC, no API tokens).
+# Builds the sdist and one wheel per platform, smoke-tests the wheels in clean
+# environments, and publishes with PyPI Trusted Publishing (OIDC, no API
+# tokens).
 #
-# - Pull requests that touch packaging: build and smoke-test only.
+# The wheels carry the compiled Rust core (neuroclamp._core). It is built
+# against Python's stable ABI (abi3), so one wheel per platform serves every
+# supported Python version.
+#
+# - Push to main that touches the build configuration (packaging metadata,
+#   the Rust crate manifest or lockfile, or these checks): build and
+#   smoke-test only. Rust source has no platform-specific code, and CI's rust
+#   job and `uv sync` build and test it on Linux for every pull request.
 # - Manual run (workflow_dispatch): build and smoke-test; on main, also publish
-#   to TestPyPI.
-# - Tag push vX.Y.Z: build, smoke-test, publish to TestPyPI, then PyPI.
+#   to TestPyPI. Use it as a dry run before tagging.
+# - Tag push vX.Y.Z: build, smoke-test, publish to TestPyPI, then PyPI. Path
+#   filters do not apply to tag pushes.
 on:
   push:
     tags: ["v*"]
-  pull_request:
     branches: [main]
     paths:
       - pyproject.toml
       - uv.lock
-      - neuroclamp/**
-      - neuroclamp_ui/**
+      - rust/Cargo.toml
+      - rust/Cargo.lock
       - tools/check_dist.py
       - tools/smoke_test.py
       - .github/workflows/release.yml
@@ -26,7 +34,7 @@ permissions:
   contents: read
 
 jobs:
-  build:
+  sdist:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
@@ -43,8 +51,60 @@ jobs:
             exit 1
           fi
 
-      - name: Build sdist and wheel
-        run: uv build
+      - name: Build sdist
+        run: uv build --sdist
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: dist-sdist
+          path: dist/*.tar.gz
+          if-no-files-found: error
+
+  wheels:
+    name: wheel (${{ matrix.platform }})
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { platform: linux-x86_64, runner: ubuntu-latest, target: x86_64 }
+          - { platform: linux-aarch64, runner: ubuntu-24.04-arm, target: aarch64 }
+          - { platform: macos-x86_64, runner: macos-latest, target: x86_64 }
+          - { platform: macos-arm64, runner: macos-latest, target: aarch64 }
+          - { platform: windows-x86_64, runner: windows-latest, target: x64 }
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Build wheel
+        uses: PyO3/maturin-action@v1
+        with:
+          target: ${{ matrix.target }}
+          # manylinux applies to the Linux builds only; maturin builds them
+          # in a manylinux container so PyPI accepts the wheels.
+          manylinux: auto
+          args: --release --out dist
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: dist-wheel-${{ matrix.platform }}
+          path: dist/*.whl
+          if-no-files-found: error
+
+  check-dist:
+    # Collects every artifact and checks their contents.
+    needs: [sdist, wheels]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/download-artifact@v8
+        with:
+          pattern: dist-*
+          path: dist/
+          merge-multiple: true
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v7
 
       - name: Check artifact contents
         run: uv run --no-project python tools/check_dist.py dist
@@ -56,13 +116,25 @@ jobs:
           if-no-files-found: error
 
   smoke-core:
-    # The library alone, installed from the wheel with no repository checkout
-    # on sys.path and without the ui extra.
-    needs: build
-    runs-on: ubuntu-latest
+    # The library alone, installed from this platform's wheel with no
+    # repository checkout on sys.path and without the ui extra.
+    needs: check-dist
+    name: smoke-core (${{ matrix.runner }}, ${{ matrix.python }})
+    runs-on: ${{ matrix.runner }}
     strategy:
+      fail-fast: false
       matrix:
+        # macos-latest is Apple silicon; macos-15-intel covers the x86_64 wheel.
+        runner:
+          - ubuntu-latest
+          - ubuntu-24.04-arm
+          - macos-latest
+          - macos-15-intel
+          - windows-latest
         python: ["3.12", "3.13"]
+    defaults:
+      run:
+        shell: bash
     steps:
       - uses: actions/download-artifact@v8
         with:
@@ -72,17 +144,43 @@ jobs:
       - name: Install uv
         uses: astral-sh/setup-uv@v7
 
-      - name: Install the wheel without extras
+      - name: Install this platform's wheel without extras
         run: |
-          uv venv "$RUNNER_TEMP/venv" --python ${{ matrix.python }}
-          uv pip install --python "$RUNNER_TEMP/venv/bin/python" dist/*.whl
+          venv="$RUNNER_TEMP/venv"
+          uv venv "$venv" --python ${{ matrix.python }}
+          # Pick the one wheel built for this OS and architecture. The script
+          # goes in a file because macOS ships bash 3.2, which mis-parses a
+          # heredoc inside $(...).
+          cat > "$RUNNER_TEMP/pick_wheel.py" <<'EOF'
+          import glob
+          import platform
+          import sys
 
-      - name: Run a simulation and the CLI
+          # Use the machine architecture, not sysconfig.get_platform(): on
+          # macOS a universal2 Python reports "universal2" there.
+          arch = platform.machine().lower()  # x86_64, aarch64, arm64, amd64
+          marker = {"linux": "manylinux", "darwin": "macosx", "win32": "win"}[
+              sys.platform
+          ]
+          wheels = [
+              w for w in glob.glob("dist/*.whl")
+              if marker in w and w.endswith(f"_{arch}.whl")
+          ]
+          assert len(wheels) == 1, (sys.platform, arch, glob.glob("dist/*.whl"))
+          print(wheels[0])
+          EOF
+          wheel="$(uv run --no-project --python "$venv" python -I "$RUNNER_TEMP/pick_wheel.py")"
+          echo "Installing $wheel"
+          uv pip install --python "$venv" "$wheel"
+          echo "VENV=$venv" >> "$GITHUB_ENV"
+
+      - name: Run a simulation on both backends and the CLI
         working-directory: ${{ runner.temp }}
         run: |
-          source venv/bin/activate
-          python -I - <<'EOF'
+          uv run --no-project --python "$VENV" python -I - <<'EOF'
           import importlib.util
+
+          import numpy as np
 
           import neuroclamp
           from neuroclamp import simulate_current_clamp, step_current
@@ -92,13 +190,17 @@ jobs:
           result = simulate_current_clamp(neuron, current_external=stimulus)
           aps = neuroclamp.analyze_aps(result["time"], result["voltage"])
           assert aps.spike_count >= 1, aps.spike_count
+          rust = simulate_current_clamp(neuron, stimulus, backend="rust")
+          np.testing.assert_allclose(
+              rust["voltage"], result["voltage"], rtol=1e-9, atol=1e-9
+          )
           for module in ("reflex", "plotly", "rxconfig"):
               assert importlib.util.find_spec(module) is None, module
-          print("core library OK:", aps.spike_count, "spikes")
+          print("core library OK:", aps.spike_count, "spikes; Rust backend matches")
           EOF
-          neuroclamp --help
-          neuroclamp --version
-          if neuroclamp ui 2> ui.err; then
+          uv run --no-project --python "$VENV" neuroclamp --help
+          uv run --no-project --python "$VENV" neuroclamp --version
+          if uv run --no-project --python "$VENV" neuroclamp ui 2> ui.err; then
             echo "neuroclamp ui should fail without the ui extra"
             exit 1
           fi
@@ -108,7 +210,7 @@ jobs:
   smoke-ui:
     # The full app from the wheel with the ui extra, started from outside the
     # repository, then driven through a simulation in a headless browser.
-    needs: build
+    needs: check-dist
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
@@ -125,7 +227,7 @@ jobs:
       - name: Install the wheel with the ui extra
         run: |
           uv venv "$RUNNER_TEMP/venv" --python 3.12
-          wheel="$(ls dist/*.whl)"
+          wheel="$(ls dist/*manylinux*_x86_64.whl)"
           uv pip install --python "$RUNNER_TEMP/venv/bin/python" "${wheel}[ui]"
           "$RUNNER_TEMP/venv/bin/python" -I -c \
             "import importlib.util as u; assert u.find_spec('rxconfig') is None"

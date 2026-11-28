@@ -10,7 +10,7 @@ Both clamp modes use a unified gating-state dictionary that covers all channels
 import logging
 from collections.abc import Callable, Iterator, Sequence
 from concurrent.futures import ProcessPoolExecutor
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING, Literal, cast
 
 import numpy as np
 
@@ -40,6 +40,10 @@ else:
     SimulationResult = np.ndarray
 
 logger = logging.getLogger(__name__)
+
+#: Simulation backends for current clamp: the pure-Python integrator or the
+#: same integrator compiled in Rust (``neuroclamp._core``).
+Backend = Literal["python", "rust"]
 
 #: Voltage clamp bounds for the current-clamp RK4 integrator (mV).
 #: Physiological voltages span ~[-90, +60] mV; ±150 mV covers all reversal
@@ -758,9 +762,73 @@ def simulate_voltage_clamp(
     return _simulate_voltage_clamp_core(neuron, voltage_protocol, gating_state, ca_i)
 
 
+def _check_current_external(current_external: np.ndarray) -> None:
+    """Reject an empty or non-finite injected-current waveform.
+
+    Args:
+        current_external: External current in µA/cm².
+
+    Raises:
+        ValueError: If the waveform is empty or contains NaN or Inf.
+    """
+    if len(current_external) == 0:
+        raise ValueError("current_external must not be empty.")
+    if not np.all(np.isfinite(current_external)):
+        raise ValueError("current_external must not contain NaN or Inf values.")
+
+
+def _check_backend(backend: str) -> None:
+    """Reject an unknown simulation backend name.
+
+    Args:
+        backend: The requested backend.
+
+    Raises:
+        ValueError: If ``backend`` is not ``"python"`` or ``"rust"``.
+    """
+    if backend not in ("python", "rust"):
+        raise ValueError(f"backend must be 'python' or 'rust', got {backend!r}.")
+
+
+def _run_current_clamp(
+    neuron: "Neuron",
+    current_external: np.ndarray,
+    initial_V: float,
+    gating_state: dict[str, float],
+    ca_i: float,
+    backend: Backend,
+) -> SimulationResult:
+    """Run a current-clamp simulation on the chosen backend.
+
+    Args:
+        neuron: The conductance-based neuron model to simulate.
+        current_external: External current in µA/cm², already validated.
+        initial_V: Initial membrane voltage in mV.
+        gating_state: Initial gating variable values; the Python backend
+            mutates it.
+        ca_i: Initial intracellular Ca²⁺ concentration in mM.
+        backend: ``"python"`` or ``"rust"``.
+
+    Returns:
+        Structured array with one element per time step.
+    """
+    if backend == "rust":
+        # Imported here: the Rust path imports _spec, which imports this module.
+        from ._rust_backend import simulate_current_clamp_rust
+
+        return simulate_current_clamp_rust(
+            neuron, current_external, initial_V, gating_state, ca_i
+        )
+    return _simulate_current_clamp_core(
+        neuron, current_external, initial_V, gating_state, ca_i
+    )
+
+
 def simulate_current_clamp(
     neuron: "Neuron",
     current_external: np.ndarray,
+    *,
+    backend: Backend = "python",
 ) -> SimulationResult:
     """Simulate a current clamp experiment using the conductance-based neuron model.
 
@@ -783,22 +851,29 @@ def simulate_current_clamp(
         neuron: The conductance-based neuron model to simulate.
         current_external: External current in µA/cm² for a time-varying current
             waveform. The length of the array determines the simulation duration.
+        backend: ``"python"`` (default) or ``"rust"``.  The Rust backend runs
+            the same integrator compiled, much faster; it needs every gate to
+            be built from the rate expressions in :mod:`neuroclamp.rates`.
+            Both give the same result to within rounding.
 
     Returns:
         Structured array with one element per time step. Field ``"time"`` holds
         the time axis in milliseconds. Remaining fields: ``"voltage"``,
         per-channel current fields, ``"Itotal"``, gating variable fields, and
         optionally ``"ca_i"``.
-    """
-    if len(current_external) == 0:
-        raise ValueError("current_external must not be empty.")
-    if not np.all(np.isfinite(current_external)):
-        raise ValueError("current_external must not contain NaN or Inf values.")
 
+    Raises:
+        ValueError: If ``current_external`` is empty or not finite, or
+            ``backend`` is not a known backend.
+        TypeError: With ``backend="rust"``, if a gate's rate cannot be
+            compiled (for example a :class:`~neuroclamp.rates.VoltageOnlyFn`).
+    """
+    _check_current_external(current_external)
+    _check_backend(backend)
     ca_i = _default_initial_ca_i(neuron, use_ca_init=True)
     gating_state = _initialize_gating_variables(neuron, neuron.v_rest, ca_i)
-    return _simulate_current_clamp_core(
-        neuron, current_external, neuron.v_rest, gating_state, ca_i
+    return _run_current_clamp(
+        neuron, current_external, neuron.v_rest, gating_state, ca_i, backend
     )
 
 
@@ -858,6 +933,8 @@ def simulate_current_clamp_from_state(
     initial_V: float,
     initial_gating_state: dict[str, float],
     initial_ca_i: float | None = None,
+    *,
+    backend: Backend = "python",
 ) -> SimulationResult:
     """Simulate a current clamp experiment starting from an explicit neuron state.
 
@@ -877,14 +954,21 @@ def simulate_current_clamp_from_state(
             ``None``, the value :func:`simulate_current_clamp` starts from:
             ``calcium_dynamics.ca_init`` (or ``ca_rest``), or ``neuron.Ca_in``
             without dynamics.
+        backend: ``"python"`` (default) or ``"rust"``; see
+            :func:`simulate_current_clamp`.
 
     Returns:
         Structured array with the same fields as :func:`simulate_current_clamp`.
+
+    Raises:
+        ValueError: If ``current_external`` is empty or not finite, ``backend``
+            is not a known backend, or ``initial_gating_state`` does not have
+            exactly the neuron's gate names.
+        TypeError: With ``backend="rust"``, if a gate's rate cannot be
+            compiled.
     """
-    if len(current_external) == 0:
-        raise ValueError("current_external must not be empty.")
-    if not np.all(np.isfinite(current_external)):
-        raise ValueError("current_external must not contain NaN or Inf values.")
+    _check_current_external(current_external)
+    _check_backend(backend)
 
     num_time_steps = len(current_external)
     duration_ms = (num_time_steps - 1) / SIM_SAMPLING_FREQ * 1000.0
@@ -896,8 +980,13 @@ def simulate_current_clamp_from_state(
     )
     if initial_ca_i is None:
         initial_ca_i = _default_initial_ca_i(neuron, use_ca_init=True)
-    result = _simulate_current_clamp_core(
-        neuron, current_external, initial_V, dict(initial_gating_state), initial_ca_i
+    result = _run_current_clamp(
+        neuron,
+        current_external,
+        initial_V,
+        dict(initial_gating_state),
+        initial_ca_i,
+        backend,
     )
     logger.debug(
         "simulate_current_clamp_from_state: complete — %d steps", num_time_steps
