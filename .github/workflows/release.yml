@@ -8,20 +8,20 @@ name: Release
 # against Python's stable ABI (abi3), so one wheel per platform serves every
 # supported Python version.
 #
-# - Pull requests that touch packaging: build and smoke-test only.
+# - Push to main that touches the build (packaging metadata, the Rust core or
+#   these checks): build and smoke-test only. Pull requests do not run the
+#   wheel matrix; CI's rust job and `uv sync` build the core on Linux there.
 # - Manual run (workflow_dispatch): build and smoke-test; on main, also publish
-#   to TestPyPI.
-# - Tag push vX.Y.Z: build, smoke-test, publish to TestPyPI, then PyPI.
+#   to TestPyPI. Use it as a dry run before tagging.
+# - Tag push vX.Y.Z: build, smoke-test, publish to TestPyPI, then PyPI. Path
+#   filters do not apply to tag pushes.
 on:
   push:
     tags: ["v*"]
-  pull_request:
     branches: [main]
     paths:
       - pyproject.toml
       - uv.lock
-      - neuroclamp/**
-      - neuroclamp_ui/**
       - rust/**
       - tools/check_dist.py
       - tools/smoke_test.py
@@ -122,7 +122,13 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        runner: [ubuntu-latest, ubuntu-24.04-arm, macos-latest, windows-latest]
+        # macos-latest is Apple silicon; macos-15-intel covers the x86_64 wheel.
+        runner:
+          - ubuntu-latest
+          - ubuntu-24.04-arm
+          - macos-latest
+          - macos-15-intel
+          - windows-latest
         python: ["3.12", "3.13"]
     defaults:
       run:
