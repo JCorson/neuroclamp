@@ -90,7 +90,7 @@ jobs:
           path: dist/*.whl
           if-no-files-found: error
 
-  build:
+  check-dist:
     # Collects every artifact and checks their contents.
     needs: [sdist, wheels]
     runs-on: ubuntu-latest
@@ -118,7 +118,7 @@ jobs:
   smoke-core:
     # The library alone, installed from this platform's wheel with no
     # repository checkout on sys.path and without the ui extra.
-    needs: build
+    needs: check-dist
     name: smoke-core (${{ matrix.runner }}, ${{ matrix.python }})
     runs-on: ${{ matrix.runner }}
     strategy:
@@ -210,7 +210,7 @@ jobs:
   smoke-ui:
     # The full app from the wheel with the ui extra, started from outside the
     # repository, then driven through a simulation in a headless browser.
-    needs: build
+    needs: check-dist
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
