@@ -93,7 +93,9 @@ channel, and the gating variables. Related entry points:
 ### Compiled simulation
 
 Every runner above takes `backend="rust"` to run the same integrator compiled
-in Rust, typically 30 to 90 times faster:
+in Rust. A single run is typically 30 to 90 times faster than with the default
+backend, and a `simulate_batch` family typically 35 to 80 times faster than the
+process pool:
 
 ```python
 result = neuroclamp.simulate_current_clamp(neuron, stimulus, backend="rust")
@@ -108,8 +110,10 @@ results = list(
 With `simulate_batch`, the Rust backend runs the whole family in one call, its
 sweeps in parallel on a thread pool instead of in separate processes. That
 works for `simulate_current_clamp` and `simulate_voltage_clamp`; any other
-`simulate_fn` needs the default backend. The results are yielded once every
-sweep has finished, rather than one by one as with the process pool.
+`simulate_fn` needs the default backend. `max_workers` caps the number of
+threads, as it caps the number of processes for the pool. The results are
+yielded once every sweep has finished, rather than one by one as with the
+process pool.
 
 The result has the same fields and agrees with the default `backend="python"`
 to within rounding. The Rust backend needs every gate's rates to be built from

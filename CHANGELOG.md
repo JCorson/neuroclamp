@@ -33,7 +33,7 @@ listed under **Changed** or **Removed**.
   in one call on the compiled core, its sweeps in parallel on a thread pool,
   typically 35 to 80 times faster than the process pool. It covers
   `simulate_current_clamp` and `simulate_voltage_clamp`, and sweeps may differ
-  in length.
+  in length. `max_workers` caps its threads.
 - `Rate.uses_calcium` reports whether a rate depends on intracellular Ca²⁺.
   Expressions derive it automatically; a custom `Rate` subclass that does not
   declare it is treated as Ca²⁺-dependent.
@@ -69,6 +69,11 @@ listed under **Changed** or **Removed**.
 
 ### Fixed
 
+- `simulate_batch()` accepts the 2-D array from `build_protocol_from_preset()`
+  directly, one sweep per row, instead of raising a `ValueError` about an
+  ambiguous truth value. Invalid arguments (`backend`, `max_workers`, or a
+  `simulate_fn` the Rust backend cannot run) now raise when `simulate_batch()`
+  is called rather than when its results are first read.
 - A neuron with Ca²⁺ channels but no `calcium_dynamics` now holds
   intracellular Ca²⁺ at its `Ca_in` instead of at zero. Before, its Ca²⁺
   channels saw an E_Ca of about +286 mV instead of about +125 mV, so their
