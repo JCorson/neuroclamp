@@ -11,7 +11,8 @@
 
 use serde::Deserialize;
 
-/// Largest |x| passed to `exp`/`cosh`; matches `neuroclamp.utils.SAFE_EXP_CLIP_MAX`.
+/// Largest |x| passed to `exp`/`cosh`; matches `neuroclamp.utils.SAFE_EXP_CLIP_MAX`,
+/// from which Python derives `SAFE_EXP_CLIP_MIN` and `SAFE_COSH_CLIP`.
 pub const EXP_CLIP: f64 = 100.0;
 
 /// `exp(x)` with the input clipped to `[-EXP_CLIP, EXP_CLIP]`.
