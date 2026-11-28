@@ -29,6 +29,11 @@ listed under **Changed** or **Removed**.
   rounding.
   The default stays `backend="python"`. Every gate must be built from rate
   expressions, as all built-in channels are.
+- `simulate_batch()` takes `backend="rust"` too: the whole protocol family runs
+  in one call on the compiled core, its sweeps in parallel on a thread pool,
+  typically 35 to 80 times faster than the process pool. It covers
+  `simulate_current_clamp` and `simulate_voltage_clamp`, and sweeps may differ
+  in length.
 - `Rate.uses_calcium` reports whether a rate depends on intracellular Ca²⁺.
   Expressions derive it automatically; a custom `Rate` subclass that does not
   declare it is treated as Ca²⁺-dependent.
