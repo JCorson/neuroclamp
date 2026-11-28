@@ -7,6 +7,7 @@ Both clamp modes use a unified gating-state dictionary that covers all channels
 (core Na/K/leak and any additional channels) and a single RK4 integrator path.
 """
 
+import functools
 import logging
 from collections.abc import Callable, Iterator, Sequence
 from concurrent.futures import ProcessPoolExecutor
@@ -1057,7 +1058,7 @@ def simulate_current_clamp_from_state(
 
 def simulate_batch(
     neuron: "Neuron",
-    protocols: Sequence[np.ndarray],
+    protocols: Sequence[np.ndarray] | np.ndarray,
     simulate_fn: Callable[
         ["Neuron", np.ndarray], SimulationResult
     ] = simulate_voltage_clamp,
@@ -1078,42 +1079,71 @@ def simulate_batch(
     in parallel on a thread pool; it is typically tens of times faster, and
     the results are yielded once all sweeps have finished.
 
-    An empty *protocols* sequence yields nothing.  A single-element sequence
-    is equivalent to calling *simulate_fn* directly.
+    The arguments are checked when ``simulate_batch`` is called; the
+    simulations start when the returned iterator is first advanced.  An empty
+    *protocols* sequence yields nothing.  A single-element sequence is
+    equivalent to calling *simulate_fn* directly.
 
     Args:
         neuron: The conductance-based neuron model to simulate.
         protocols: Sequence of protocol arrays, each passed individually to
-            *simulate_fn*.  They may differ in length.
+            *simulate_fn*, or a 2-D array with one protocol per row.  The
+            protocols may differ in length.
         simulate_fn: The simulation function to apply to each protocol.
             Defaults to :func:`simulate_voltage_clamp`; pass
             :func:`simulate_current_clamp` for current-clamp batch runs.
         max_workers: Maximum number of worker processes for the Python
-            backend.  ``None`` (default) uses the CPU count.  The Rust backend
-            uses one thread per CPU core and ignores it.
+            backend, or of threads for the Rust backend.  ``None`` (default)
+            uses the CPU count.
         backend: ``"python"`` (default) or ``"rust"``.  The Rust backend runs
             :func:`simulate_current_clamp` and :func:`simulate_voltage_clamp`
-            only, and needs every gate to be built from the rate expressions
-            in :mod:`neuroclamp.rates`.
+            only (also through :func:`functools.partial` without bound
+            arguments, or a wrapper that sets ``__wrapped__``), and needs
+            every gate to be built from the rate expressions in
+            :mod:`neuroclamp.rates`.
 
-    Yields:
-        Structured arrays in the same order as *protocols*, one per protocol.
+    Returns:
+        An iterator over structured arrays in the same order as *protocols*,
+        one per protocol.
 
     Raises:
-        ValueError: If ``backend`` is not a known backend; with
-            ``backend="rust"``, if *simulate_fn* is not
-            :func:`simulate_current_clamp` or :func:`simulate_voltage_clamp`,
-            or a protocol is empty or not finite.
-        TypeError: With ``backend="rust"``, if a gate's rate cannot be
-            compiled.
+        ValueError: At the call, if ``backend`` is not a known backend,
+            ``max_workers`` is less than 1, or, with ``backend="rust"``,
+            *simulate_fn* is not :func:`simulate_current_clamp` or
+            :func:`simulate_voltage_clamp`.  While iterating, with
+            ``backend="rust"``, if a protocol is empty or not finite.
+        TypeError: While iterating, with ``backend="rust"``, if a gate's rate
+            cannot be compiled.
     """
     _check_backend(backend)
-    if not protocols:
-        return
+    if max_workers is not None and max_workers < 1:
+        raise ValueError(f"max_workers must be at least 1, got {max_workers}.")
     if backend == "rust":
-        yield from _simulate_batch_rust(neuron, protocols, simulate_fn)
-        return
+        mode = _rust_clamp_mode(simulate_fn)
+        return _simulate_batch_rust(neuron, protocols, mode, max_workers)
+    return _simulate_batch_pool(neuron, protocols, simulate_fn, max_workers)
 
+
+def _simulate_batch_pool(
+    neuron: "Neuron",
+    protocols: Sequence[np.ndarray] | np.ndarray,
+    simulate_fn: Callable[["Neuron", np.ndarray], SimulationResult],
+    max_workers: int | None,
+) -> Iterator[SimulationResult]:
+    """Run a protocol family on a process pool, yielding results in order.
+
+    Args:
+        neuron: The conductance-based neuron model to simulate.
+        protocols: Sequence of protocol arrays, or a 2-D array of them.
+        simulate_fn: The simulation function to apply to each protocol.
+        max_workers: Maximum number of worker processes; ``None`` uses the
+            CPU count.
+
+    Yields:
+        One structured array per protocol, in order.
+    """
+    if len(protocols) == 0:
+        return
     with ProcessPoolExecutor(max_workers=max_workers) as executor:
         futures = [
             executor.submit(simulate_fn, neuron, protocol) for protocol in protocols
@@ -1122,55 +1152,97 @@ def simulate_batch(
             yield future.result()
 
 
+def _rust_clamp_mode(
+    simulate_fn: Callable[["Neuron", np.ndarray], SimulationResult],
+) -> Literal["current", "voltage"]:
+    """Name the clamp mode whose Rust batch runs *simulate_fn*.
+
+    *simulate_fn* is unwrapped through :func:`functools.partial` objects that
+    bind no arguments and through ``__wrapped__`` (set by
+    :func:`functools.wraps`), so a wrapper around a runner selects that
+    runner.  A partial that binds arguments is not unwrapped, because the
+    Rust batch cannot apply them.
+
+    Args:
+        simulate_fn: The function passed to :func:`simulate_batch`.
+
+    Returns:
+        ``"current"`` for :func:`simulate_current_clamp`, ``"voltage"`` for
+        :func:`simulate_voltage_clamp`.
+
+    Raises:
+        ValueError: If *simulate_fn* is neither runner.
+    """
+    fn: object = simulate_fn
+    seen: set[int] = set()
+    while id(fn) not in seen:
+        seen.add(id(fn))
+        if fn is simulate_current_clamp:
+            return "current"
+        if fn is simulate_voltage_clamp:
+            return "voltage"
+        if isinstance(fn, functools.partial) and not fn.args and not fn.keywords:
+            fn = fn.func
+        else:
+            fn = getattr(fn, "__wrapped__", None)
+            if fn is None:
+                break
+    name = getattr(simulate_fn, "__name__", repr(simulate_fn))
+    raise ValueError(
+        "simulate_batch(backend='rust') runs simulate_current_clamp or "
+        f"simulate_voltage_clamp, not {name}."
+    )
+
+
 def _simulate_batch_rust(
     neuron: "Neuron",
-    protocols: Sequence[np.ndarray],
-    simulate_fn: Callable[["Neuron", np.ndarray], SimulationResult],
-) -> list[SimulationResult]:
+    protocols: Sequence[np.ndarray] | np.ndarray,
+    mode: Literal["current", "voltage"],
+    max_workers: int | None,
+) -> Iterator[SimulationResult]:
     """Run a protocol family on the Rust core with fresh initial conditions.
 
-    The initial state of each sweep is the one *simulate_fn* would start from:
-    current clamp starts every sweep at rest, and voltage clamp starts each at
-    steady state at its first voltage.
+    The initial state of each sweep is the one the matching single run would
+    start from: current clamp starts every sweep at rest, and voltage clamp
+    starts each at steady state at its first voltage.
 
     Args:
         neuron: The conductance-based neuron model to simulate.
-        protocols: Non-empty sequence of protocol arrays.
-        simulate_fn: :func:`simulate_current_clamp` or
-            :func:`simulate_voltage_clamp`.
+        protocols: Sequence of protocol arrays, or a 2-D array of them.
+        mode: ``"current"`` or ``"voltage"``, from :func:`_rust_clamp_mode`.
+        max_workers: Number of threads to run the sweeps on; ``None`` uses
+            one per CPU core.
 
-    Returns:
-        One structured array per protocol, in order.
+    Yields:
+        One structured array per protocol, in order, once all have finished.
 
     Raises:
-        ValueError: If *simulate_fn* has no Rust counterpart, or a protocol is
-            empty or not finite.
+        ValueError: If a protocol is empty or not finite.
     """
+    if len(protocols) == 0:
+        return
     # Imported here: the Rust path imports _spec, which imports this module.
     from ._rust_backend import (
         simulate_current_clamp_batch_rust,
         simulate_voltage_clamp_batch_rust,
     )
 
-    if simulate_fn is simulate_current_clamp:
+    if mode == "current":
         for protocol in protocols:
             _check_current_external(protocol)
         ca_i = _default_initial_ca_i(neuron, use_ca_init=True)
         gating_state = _initialize_gating_variables(neuron, neuron.v_rest, ca_i)
-        return simulate_current_clamp_batch_rust(
-            neuron, protocols, neuron.v_rest, gating_state, ca_i
+        yield from simulate_current_clamp_batch_rust(
+            neuron, protocols, neuron.v_rest, gating_state, ca_i, max_workers
         )
-    if simulate_fn is simulate_voltage_clamp:
-        for protocol in protocols:
-            _check_voltage_protocol(protocol)
-        ca_i = _default_initial_ca_i(neuron, use_ca_init=False)
-        gating_states = [
-            _initialize_gating_variables(neuron, protocol[0], ca_i)
-            for protocol in protocols
-        ]
-        return simulate_voltage_clamp_batch_rust(neuron, protocols, gating_states, ca_i)
-    name = getattr(simulate_fn, "__name__", repr(simulate_fn))
-    raise ValueError(
-        "simulate_batch(backend='rust') runs simulate_current_clamp or "
-        f"simulate_voltage_clamp, not {name}."
+        return
+    for protocol in protocols:
+        _check_voltage_protocol(protocol)
+    ca_i = _default_initial_ca_i(neuron, use_ca_init=False)
+    gating_states = [
+        _initialize_gating_variables(neuron, protocol[0], ca_i)
+        for protocol in protocols
+    ]
+    yield from simulate_voltage_clamp_batch_rust(
+        neuron, protocols, gating_states, ca_i, max_workers
     )

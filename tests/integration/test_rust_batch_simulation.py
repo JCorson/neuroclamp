@@ -10,6 +10,8 @@ runs, so a flat tolerance would flag the steep spike edges.
 
 from __future__ import annotations
 
+import functools
+
 import numpy as np
 import pytest
 
@@ -126,7 +128,11 @@ def test_rust_batch_of_no_protocols_yields_nothing() -> None:
 
 
 def test_rust_batch_rejects_other_simulation_functions() -> None:
-    """Only the two clamp runners have a Rust counterpart."""
+    """Only the two clamp runners have a Rust counterpart.
+
+    The check runs when ``simulate_batch`` is called, before iteration, and
+    also for an empty family.
+    """
     neuron = nc.NEURON_PRESETS["Squid Giant Axon (Classic HH)"]()
 
     def custom(neuron: Neuron, protocol: np.ndarray) -> SimulationResult:
@@ -142,7 +148,82 @@ def test_rust_batch_rejects_other_simulation_functions() -> None:
         return nc.simulate_current_clamp(neuron, protocol)
 
     with pytest.raises(ValueError, match="not custom"):
-        list(nc.simulate_batch(neuron, [np.zeros(10)], custom, backend="rust"))
+        nc.simulate_batch(neuron, [np.zeros(10)], custom, backend="rust")
+    with pytest.raises(ValueError, match="not custom"):
+        nc.simulate_batch(neuron, [], custom, backend="rust")
+    bound = functools.partial(nc.simulate_current_clamp, backend="python")
+    with pytest.raises(ValueError, match="simulate_voltage_clamp, not"):
+        nc.simulate_batch(neuron, [np.zeros(10)], bound, backend="rust")
+
+
+def test_rust_batch_unwraps_runner_wrappers() -> None:
+    """A bare partial or a ``functools.wraps`` wrapper selects the runner."""
+    neuron = nc.NEURON_PRESETS["Squid Giant Axon (Classic HH)"]()
+    sweeps = [np.zeros(200), np.full(200, 10.0)]
+
+    @functools.wraps(nc.simulate_current_clamp)
+    def logged(neuron: Neuron, protocol: np.ndarray) -> SimulationResult:
+        """Wrap the current-clamp runner as a decorator would.
+
+        Args:
+            neuron: The neuron.
+            protocol: The protocol.
+
+        Returns:
+            The current-clamp result.
+        """
+        return nc.simulate_current_clamp(neuron, protocol)
+
+    expected = list(
+        nc.simulate_batch(neuron, sweeps, nc.simulate_current_clamp, backend="rust")
+    )
+    for wrapper in (functools.partial(nc.simulate_current_clamp), logged):
+        got = list(nc.simulate_batch(neuron, sweeps, wrapper, backend="rust"))
+        for g, e in zip(got, expected, strict=True):
+            np.testing.assert_array_equal(g, e)
+
+
+@pytest.mark.parametrize("backend", ["python", "rust"])
+def test_batch_accepts_2d_protocol_array(backend) -> None:
+    """The 2-D array from ``build_protocol_from_preset`` runs one sweep per row.
+
+    Args:
+        backend: Simulation backend.
+    """
+    neuron_key = "Squid Giant Axon (Classic HH)"
+    neuron = nc.NEURON_PRESETS[neuron_key]()
+    sweeps = nc.build_protocol_from_preset("F-I Curve", neuron_key)[:2]
+    batch = list(
+        nc.simulate_batch(
+            neuron, sweeps, nc.simulate_current_clamp, max_workers=2, backend=backend
+        )
+    )
+    assert len(batch) == 2
+    for sweep, result in zip(sweeps, batch, strict=True):
+        single = nc.simulate_current_clamp(neuron, sweep, backend=backend)
+        np.testing.assert_array_equal(result, single)
+
+
+def test_rust_batch_thread_count_does_not_change_results() -> None:
+    """``max_workers`` caps the Rust threads without changing any sweep."""
+    neuron = nc.NEURON_PRESETS["Squid Giant Axon (Classic HH)"]()
+    sweeps = [np.full(300, -65.0 + 5.0 * k) for k in range(5)]
+    default = list(nc.simulate_batch(neuron, sweeps, backend="rust"))
+    capped = list(nc.simulate_batch(neuron, sweeps, max_workers=1, backend="rust"))
+    for c, d in zip(capped, default, strict=True):
+        np.testing.assert_array_equal(c, d)
+
+
+@pytest.mark.parametrize("backend", ["python", "rust"])
+def test_batch_rejects_nonpositive_max_workers(backend) -> None:
+    """``max_workers`` below 1 raises when ``simulate_batch`` is called.
+
+    Args:
+        backend: Simulation backend.
+    """
+    neuron = nc.NEURON_PRESETS["Squid Giant Axon (Classic HH)"]()
+    with pytest.raises(ValueError, match="max_workers must be at least 1"):
+        nc.simulate_batch(neuron, [np.zeros(10)], max_workers=0, backend=backend)
 
 
 @pytest.mark.parametrize(
@@ -199,4 +280,4 @@ def test_batch_rejects_unknown_backend(backend) -> None:
     """
     neuron = nc.NEURON_PRESETS["Squid Giant Axon (Classic HH)"]()
     with pytest.raises(ValueError, match="backend must be"):
-        list(nc.simulate_batch(neuron, [np.zeros(10)], backend=backend))
+        nc.simulate_batch(neuron, [np.zeros(10)], backend=backend)

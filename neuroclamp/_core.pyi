@@ -59,6 +59,7 @@ class Model:
         gates0: Sequence[float],
         ca0: float,
         dt: float,
+        num_threads: int | None = None,
     ) -> list[NDArray[np.float64]]:
         """Run one sweep per array in ``i_ext`` in parallel from the same state.
 
@@ -72,6 +73,8 @@ class Model:
             gates0: Initial gate values, in spec order.
             ca0: Initial intracellular Ca²⁺ in mM.
             dt: Time step in ms.
+            num_threads: Number of threads to run the sweeps on.  ``None``
+                (default) uses one per CPU core.
 
         Returns:
             One ``(n_steps, n_columns)`` array per sweep, in order.
@@ -110,6 +113,7 @@ class Model:
         gates0: Sequence[Sequence[float]],
         ca0: Sequence[float],
         dt: float,
+        num_threads: int | None = None,
     ) -> list[NDArray[np.float64]]:
         """Run one voltage-clamp sweep per array in ``v_protocol`` in parallel.
 
@@ -123,6 +127,8 @@ class Model:
             gates0: Initial gate values, one sequence per sweep, in spec order.
             ca0: Initial intracellular Ca²⁺ in mM, one value per sweep.
             dt: Time step in ms.
+            num_threads: Number of threads to run the sweeps on.  ``None``
+                (default) uses one per CPU core.
 
         Returns:
             One ``(n_steps, n_columns)`` array per sweep, in order.

@@ -79,10 +79,11 @@ def simulate_current_clamp_rust(
 
 def simulate_current_clamp_batch_rust(
     neuron: Neuron,
-    protocols: Sequence[np.ndarray],
+    protocols: Sequence[np.ndarray] | np.ndarray,
     initial_V: float,
     initial_gating_state: dict[str, float],
     initial_ca_i: float,
+    num_threads: int | None = None,
 ) -> list[SimulationResult]:
     """Run current-clamp sweeps in parallel on the Rust core.
 
@@ -99,6 +100,8 @@ def simulate_current_clamp_batch_rust(
         initial_V: Initial membrane voltage in mV.
         initial_gating_state: Initial gate values keyed by gate name.
         initial_ca_i: Initial intracellular Ca²⁺ in mM.
+        num_threads: Number of threads to run the sweeps on.  ``None``
+            (default) uses one per CPU core.
 
     Returns:
         One structured array per sweep, in protocol order, each identical to
@@ -118,6 +121,7 @@ def simulate_current_clamp_batch_rust(
         gates0,
         float(initial_ca_i),
         _DT_MS,
+        num_threads,
     )
     order = _current_clamp_order(neuron)
     return [_to_structured(neuron, columns, order) for columns in blocks]
@@ -162,9 +166,10 @@ def simulate_voltage_clamp_rust(
 
 def simulate_voltage_clamp_batch_rust(
     neuron: Neuron,
-    protocols: Sequence[np.ndarray],
+    protocols: Sequence[np.ndarray] | np.ndarray,
     initial_gating_states: Sequence[dict[str, float]],
     initial_ca_i: float,
+    num_threads: int | None = None,
 ) -> list[SimulationResult]:
     """Run voltage-clamp sweeps in parallel on the Rust core.
 
@@ -182,6 +187,8 @@ def simulate_voltage_clamp_batch_rust(
         initial_gating_states: Initial gate values keyed by gate name, one
             dict per sweep.
         initial_ca_i: Initial intracellular Ca²⁺ in mM, shared by every sweep.
+        num_threads: Number of threads to run the sweeps on.  ``None``
+            (default) uses one per CPU core.
 
     Returns:
         One structured array per sweep, in protocol order, each identical to
@@ -199,6 +206,7 @@ def simulate_voltage_clamp_batch_rust(
         gates0,
         [float(initial_ca_i)] * len(protocols),
         _DT_MS,
+        num_threads,
     )
     order = _voltage_clamp_order(neuron)
     return [_to_structured(neuron, columns, order) for columns in blocks]

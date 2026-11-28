@@ -87,6 +87,9 @@ impl PyModel {
     /// Sweeps may differ in length, and each has its own initial state: a
     /// fresh voltage-clamp run starts at steady state at its first voltage.
     /// Returns one `(n_steps, n_columns)` array per sweep, in order.
+    /// `num_threads` caps the threads the sweeps run on; `None` uses one
+    /// per CPU core.
+    #[pyo3(signature = (v_protocol, gates0, ca0, dt, num_threads=None))]
     fn simulate_voltage_clamp_batch<'py>(
         &self,
         py: Python<'py>,
@@ -94,14 +97,17 @@ impl PyModel {
         gates0: Vec<Vec<f64>>,
         ca0: Vec<f64>,
         dt: f64,
+        num_threads: Option<usize>,
     ) -> PyResult<Vec<Bound<'py, PyArray2<f64>>>> {
         let protocols: Vec<Vec<f64>> = v_protocol.iter().map(|a| a.as_array().to_vec()).collect();
         let traces = py
             .detach(|| {
-                let refs: Vec<&[f64]> = protocols.iter().map(Vec::as_slice).collect();
-                let gate_refs: Vec<&[f64]> = gates0.iter().map(Vec::as_slice).collect();
-                self.inner
-                    .simulate_voltage_clamp_batch(&refs, &gate_refs, &ca0, dt)
+                in_pool(num_threads, || {
+                    let refs: Vec<&[f64]> = protocols.iter().map(Vec::as_slice).collect();
+                    let gate_refs: Vec<&[f64]> = gates0.iter().map(Vec::as_slice).collect();
+                    self.inner
+                        .simulate_voltage_clamp_batch(&refs, &gate_refs, &ca0, dt)
+                })
             })
             .map_err(PyValueError::new_err)?;
         traces.into_iter().map(|t| to_array(py, t)).collect()
@@ -111,7 +117,11 @@ impl PyModel {
     ///
     /// Sweeps may differ in length. Every sweep starts from the same initial
     /// state, as every fresh current-clamp run does. Returns one
-    /// `(n_steps, n_columns)` array per sweep, in order.
+    /// `(n_steps, n_columns)` array per sweep, in order. `num_threads` caps
+    /// the threads the sweeps run on; `None` uses one per CPU core.
+    #[pyo3(signature = (i_ext, v0, gates0, ca0, dt, num_threads=None))]
+    // The arguments are the Python call's, one per keyword; `py` is pyo3's.
+    #[allow(clippy::too_many_arguments)]
     fn simulate_current_clamp_batch<'py>(
         &self,
         py: Python<'py>,
@@ -120,16 +130,39 @@ impl PyModel {
         gates0: Vec<f64>,
         ca0: f64,
         dt: f64,
+        num_threads: Option<usize>,
     ) -> PyResult<Vec<Bound<'py, PyArray2<f64>>>> {
         let protocols: Vec<Vec<f64>> = i_ext.iter().map(|a| a.as_array().to_vec()).collect();
         let traces = py
             .detach(|| {
-                let refs: Vec<&[f64]> = protocols.iter().map(Vec::as_slice).collect();
-                self.inner
-                    .simulate_current_clamp_batch(&refs, v0, &gates0, ca0, dt)
+                in_pool(num_threads, || {
+                    let refs: Vec<&[f64]> = protocols.iter().map(Vec::as_slice).collect();
+                    self.inner
+                        .simulate_current_clamp_batch(&refs, v0, &gates0, ca0, dt)
+                })
             })
             .map_err(PyValueError::new_err)?;
         traces.into_iter().map(|t| to_array(py, t)).collect()
+    }
+}
+
+/// Run `f` on a dedicated pool of `num_threads` threads, or on rayon's global
+/// pool (one thread per CPU core) when `num_threads` is `None`.
+///
+/// Rayon's parallel iterators inside `f` use whichever pool `install` puts
+/// them on, so a dedicated pool caps the batch's CPU use.
+fn in_pool<T: Send>(
+    num_threads: Option<usize>,
+    f: impl FnOnce() -> Result<T, String> + Send,
+) -> Result<T, String> {
+    match num_threads {
+        None => f(),
+        Some(0) => Err("num_threads must be at least 1".into()),
+        Some(n) => rayon::ThreadPoolBuilder::new()
+            .num_threads(n)
+            .build()
+            .map_err(|e| e.to_string())?
+            .install(f),
     }
 }
 
