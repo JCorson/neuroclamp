@@ -29,13 +29,18 @@ WHEEL_REQUIRED: dict[str, int] = {
     "neuroclamp/__init__.py": 1,
     "neuroclamp/py.typed": 1,
     "neuroclamp/presets/*.py": 1,
-    # The compiled Rust core (.so on Linux and macOS, .pyd on Windows).
-    "neuroclamp/_core.*": 1,
     "neuroclamp_ui/__init__.py": 1,
     "neuroclamp_ui/help_content/*.md": 5,
     "neuroclamp_ui/js/*.js": 2,
     "neuroclamp_ui/help_content/screenshots/*.png": 7,
 }
+
+#: The compiled Rust core: ``_core.abi3.so`` on Linux and macOS, ``_core.pyd``
+#: on Windows. The ``_core.pyi`` stub ships alongside it and does not count.
+CORE_EXTENSION_PATTERNS: tuple[str, ...] = (
+    "neuroclamp/_core*.so",
+    "neuroclamp/_core*.pyd",
+)
 
 #: Rust sources the sdist needs so the extension can be built from it.
 SDIST_RUST_SOURCES: tuple[str, ...] = (
@@ -114,6 +119,8 @@ def check_wheel(wheel: Path) -> list[str]:
         count = sum(path.match(pattern) for path in paths)
         if count < minimum:
             failures.append(f"wheel: {pattern} matched {count}, expected {minimum}+")
+    if not any(path.match(p) for path in paths for p in CORE_EXTENSION_PATTERNS):
+        failures.append("wheel: missing the compiled core neuroclamp/_core (.so/.pyd)")
 
     top_level = {path.parts[0] for path in paths}
     for name in FORBIDDEN_TOP_LEVEL:

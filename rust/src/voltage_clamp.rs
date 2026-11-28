@@ -205,6 +205,9 @@ impl Model {
         ca0: f64,
         dt: f64,
     ) -> Result<Vec<Trace>, String> {
+        if protocols.is_empty() {
+            return Err("voltage_protocol batch must have at least one sweep".into());
+        }
         protocols
             .par_iter()
             .map(|v_protocol| self.simulate_voltage_clamp(v_protocol, gates0, ca0, dt))
@@ -259,6 +262,14 @@ mod tests {
         assert_eq!(trace.data[0], -60.0);
         assert_eq!(trace.data[1], 2.0 * 0.5 * 20.0);
         assert_eq!(trace.data[trace.n_columns], 10.0);
+    }
+
+    #[test]
+    fn empty_batch_is_rejected() {
+        let err = one_gate_model()
+            .simulate_voltage_clamp_batch(&[], &[0.3], 0.0, 0.025)
+            .unwrap_err();
+        assert!(err.contains("at least one sweep"), "{err}");
     }
 
     #[test]

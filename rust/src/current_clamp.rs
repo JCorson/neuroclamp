@@ -43,24 +43,14 @@ pub(crate) fn py_clamp(x: f64, lo: f64, hi: f64) -> f64 {
     if upper > lo { upper } else { lo } // max(lo, ·)
 }
 
-/// Python's built-in `sum()` of floats, which CPython (3.12+) computes with
-/// Neumaier compensated summation; used for the recorded `Itotal` column.
-pub(crate) fn py_sum(values: &[f64]) -> f64 {
-    let mut total = 0.0;
-    let mut compensation = 0.0;
-    for &x in values {
-        let t = total + x;
-        if total.abs() >= x.abs() {
-            compensation += (total - t) + x;
-        } else {
-            compensation += (x - t) + total;
-        }
-        total = t;
-    }
-    if compensation != 0.0 && compensation.is_finite() {
-        total += compensation;
-    }
-    total
+/// Python's `sum()` over the per-channel currents, used for the recorded
+/// `Itotal` column.
+///
+/// The Python backend's currents are `numpy.float64`, which skips CPython's
+/// compensated exact-float path, so `sum()` is a plain left-to-right add
+/// starting from 0.
+fn py_sum(values: &[f64]) -> f64 {
+    values.iter().fold(0.0, |total, &x| total + x)
 }
 
 impl Model {
@@ -168,8 +158,8 @@ impl Model {
         let n_ch = currents.len();
         row[0] = v;
         row[1..1 + n_ch].copy_from_slice(currents);
-        // The Python backend records `sum(currents)`, so this uses the same
-        // compensated sum (dV/dt uses plain accumulation, as Python does).
+        // The Python backend records `sum(currents)` over numpy floats: a
+        // plain left-to-right add, the same order dV/dt accumulates in.
         row[1 + n_ch] = py_sum(currents);
         row[2 + n_ch..2 + n_ch + gates.len()].copy_from_slice(gates);
         if self.spec.calcium_dynamics.is_some() {
@@ -315,6 +305,9 @@ impl Model {
         ca0: f64,
         dt: f64,
     ) -> Result<Vec<Trace>, String> {
+        if protocols.is_empty() {
+            return Err("current_external batch must have at least one sweep".into());
+        }
         protocols
             .par_iter()
             .map(|i_ext| self.simulate_current_clamp(i_ext, v0, gates0, ca0, dt))
@@ -385,12 +378,22 @@ mod tests {
     }
 
     #[test]
-    fn sum_matches_python_compensated_sum() {
-        // Python: sum([1e16, 1.0, -1e16]) == 1.0 (naive summation gives 0.0).
-        assert_eq!(py_sum(&[1e16, 1.0, -1e16]), 1.0);
-        // sum([0.1] * 10) == 1.0 in Python 3.12+.
-        assert_eq!(py_sum(&[0.1; 10]), 1.0);
+    fn sum_matches_python_sum_of_numpy_floats() {
+        // Python: sum(map(np.float64, [1e16, 1.0, -1e16])) == 0.0 (no
+        // compensation for non-exact floats).
+        assert_eq!(py_sum(&[1e16, 1.0, -1e16]), 0.0);
+        // sum([np.float64(0.1)] * 10) == 0.9999999999999999.
+        assert_eq!(py_sum(&[0.1; 10]), 0.999_999_999_999_999_9);
         assert_eq!(py_sum(&[]), 0.0);
+    }
+
+    #[test]
+    fn empty_batch_is_rejected() {
+        let model = passive_model(0.3, -65.0, 1.0);
+        let err = model
+            .simulate_current_clamp_batch(&[], -65.0, &[], 0.0, 0.01)
+            .unwrap_err();
+        assert!(err.contains("at least one sweep"), "{err}");
     }
 
     #[test]

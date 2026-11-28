@@ -37,5 +37,5 @@ scratch/
 site/
 
 # Compiled Rust extension placed in the package by editable installs
-/neuroclamp/_core.*.so
-/neuroclamp/_core.*.pyd
+/neuroclamp/_core*.so
+/neuroclamp/_core*.pyd

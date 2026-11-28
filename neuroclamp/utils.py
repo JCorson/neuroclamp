@@ -7,13 +7,15 @@ import math
 
 # Clipping bounds for safe_exp: chosen so that exp(100) ≈ 2.7e43, well below
 # float64 overflow (~e308), while still covering all physiologically relevant
-# voltage-derived exponents in the Hodgkin-Huxley rate equations.
-SAFE_EXP_CLIP_MIN = -100
+# voltage-derived exponents in the Hodgkin-Huxley rate equations.  The model
+# spec for the Rust core carries this one bound (``exp_clip``), so the other
+# bounds are derived from it.
 SAFE_EXP_CLIP_MAX = 100
+SAFE_EXP_CLIP_MIN = -SAFE_EXP_CLIP_MAX
 
 # Clipping bound for safe_cosh: cosh is symmetric so a single bound suffices.
 # cosh(100) ≈ 1.34e43, well below float64 overflow (~e308).
-SAFE_COSH_CLIP = 100
+SAFE_COSH_CLIP = SAFE_EXP_CLIP_MAX
 
 
 def safe_exp(x: float) -> float:

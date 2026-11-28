@@ -58,11 +58,12 @@ def simulate_current_clamp_rust(
     Raises:
         neuroclamp._spec.UnloweredRateError: If a gate's rate is not built
             from the standard expression forms.
-        ValueError: If ``initial_gating_state`` does not have exactly the
-            neuron's gate names.
+        ValueError: If gate names repeat across channels, or if
+            ``initial_gating_state`` does not have exactly the neuron's gate
+            names.
     """
-    gates0 = _initial_gates(neuron, initial_gating_state)
-    columns = _compile(neuron).simulate_current_clamp(
+    model, gates0 = _prepare(neuron, initial_gating_state)
+    columns = model.simulate_current_clamp(
         np.ascontiguousarray(current_external, dtype=np.float64),
         float(initial_V),
         gates0,
@@ -97,11 +98,12 @@ def simulate_voltage_clamp_rust(
     Raises:
         neuroclamp._spec.UnloweredRateError: If a gate's rate is not built
             from the standard expression forms.
-        ValueError: If ``initial_gating_state`` does not have exactly the
-            neuron's gate names.
+        ValueError: If gate names repeat across channels, or if
+            ``initial_gating_state`` does not have exactly the neuron's gate
+            names.
     """
-    gates0 = _initial_gates(neuron, initial_gating_state)
-    columns = _compile(neuron).simulate_voltage_clamp(
+    model, gates0 = _prepare(neuron, initial_gating_state)
+    columns = model.simulate_voltage_clamp(
         np.ascontiguousarray(voltage_protocol, dtype=np.float64),
         gates0,
         float(initial_ca_i),
@@ -112,33 +114,29 @@ def simulate_voltage_clamp_rust(
     return _to_structured(neuron, columns, order)
 
 
-def _compile(neuron: Neuron) -> _core.Model:
-    """Lower a neuron and build the Rust model from its spec.
+def _prepare(
+    neuron: Neuron, gating_state: dict[str, float]
+) -> tuple[_core.Model, list[float]]:
+    """Compile a neuron and order its initial gate values for the Rust core.
+
+    The neuron is lowered first: lowering rejects duplicate gate names, which
+    would otherwise surface as a confusing gating-state key mismatch.
 
     Args:
         neuron: The neuron to compile.
+        gating_state: Initial gate values keyed by gate name.
 
     Returns:
-        The compiled model.
+        The compiled model and the gate values in
+        ``neuron.all_gating_variables`` order.
+
+    Raises:
+        ValueError: If gate names repeat across channels, or the keys of
+            ``gating_state`` are not exactly the neuron's gate names.
     """
     from . import _core
 
-    return _core.Model(json.dumps(lower(neuron)))
-
-
-def _initial_gates(neuron: Neuron, gating_state: dict[str, float]) -> list[float]:
-    """Order a gating-state dict as the spec's gate list.
-
-    Args:
-        neuron: The neuron, whose gates fix the order.
-        gating_state: Gate values keyed by gate name.
-
-    Returns:
-        The gate values in ``neuron.all_gating_variables`` order.
-
-    Raises:
-        ValueError: If the keys are not exactly the neuron's gate names.
-    """
+    spec = lower(neuron)
     gates = neuron.all_gating_variables
     expected = sorted(g.name for g in gates)
     if sorted(gating_state) != expected:
@@ -146,7 +144,8 @@ def _initial_gates(neuron: Neuron, gating_state: dict[str, float]) -> list[float
             "gating_state keys do not match the neuron's gating variables: "
             f"got {sorted(gating_state)}, expected {expected}"
         )
-    return [float(gating_state[g.name]) for g in gates]
+    gates0 = [float(gating_state[g.name]) for g in gates]
+    return _core.Model(json.dumps(spec)), gates0
 
 
 def _to_structured(

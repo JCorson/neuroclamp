@@ -5,6 +5,7 @@ import warnings
 import pytest
 
 from neuroclamp import find_coupled_equilibrium, find_zero_current_voltage
+from neuroclamp.channels import GatingVariable, IonChannel, IonSpecies, NernstSpec
 from neuroclamp.constants import (
     CORTICAL_PYRAMIDAL,
     DOPAMINERGIC,
@@ -16,6 +17,7 @@ from neuroclamp.constants import (
 from neuroclamp.equilibrium import _total_ionic_current
 from neuroclamp.neuron import Neuron
 from neuroclamp.presets import NEURON_PRESET_NAMES, NEURON_PRESETS
+from neuroclamp.rates import Sigmoid
 
 
 def test_total_ionic_current_type(hh_model: Neuron) -> None:
@@ -143,3 +145,55 @@ def test_find_coupled_equilibrium_no_warning_on_convergence() -> None:
     with warnings.catch_warnings():
         warnings.simplefilter("error", RuntimeWarning)
         find_coupled_equilibrium(neuron)
+
+
+def _calcium_channel_neuron_without_dynamics() -> Neuron:
+    """Build a neuron whose resting potential depends strongly on E_Ca.
+
+    A low-threshold Ca²⁺ conductance against a K⁺ leak, with no Ca²⁺
+    dynamics, so Ca²⁺ is held at ``Ca_in``.
+
+    Returns:
+        The neuron.
+    """
+    gate = GatingVariable(
+        name="d",
+        power=2,
+        alpha=Sigmoid(1.0, -80.0, 5.0),
+        beta=Sigmoid(1.0, -80.0, -5.0),
+    )
+    return Neuron(
+        channels=(
+            IonChannel(
+                name="CaT",
+                g_max=0.2,
+                gating_variables=(gate,),
+                reversal_spec=NernstSpec(IonSpecies.CALCIUM),
+                carries_calcium=True,
+            ),
+            IonChannel(
+                name="L",
+                g_max=1.0,
+                gating_variables=(),
+                reversal_spec=NernstSpec(IonSpecies.POTASSIUM),
+            ),
+        )
+    )
+
+
+def test_find_zero_current_voltage_defaults_to_ca_in_without_dynamics() -> None:
+    """Without Ca²⁺ dynamics the default Ca²⁺ is ``Ca_in``, as in simulations."""
+    neuron = _calcium_channel_neuron_without_dynamics()
+    assert find_zero_current_voltage(neuron) == pytest.approx(
+        find_zero_current_voltage(neuron, ca_i=neuron.Ca_in), abs=1e-9
+    )
+
+
+def test_find_coupled_equilibrium_holds_ca_in_without_dynamics() -> None:
+    """Without Ca²⁺ dynamics the equilibrium Ca²⁺ is ``Ca_in``."""
+    neuron = _calcium_channel_neuron_without_dynamics()
+    v_eq, ca_i_eq = find_coupled_equilibrium(neuron)
+    assert ca_i_eq == neuron.Ca_in
+    assert v_eq == pytest.approx(
+        find_zero_current_voltage(neuron, ca_i=neuron.Ca_in), abs=1e-9
+    )
