@@ -196,21 +196,43 @@ impl Model {
 
     /// Run one voltage-clamp sweep per protocol, in parallel across CPU cores.
     ///
-    /// Every sweep starts from the same initial state; results come back in
-    /// protocol order.
+    /// Each sweep takes its own initial state, because a voltage-clamp run
+    /// starts from the steady state at its protocol's first voltage: sweeps
+    /// that hold at different potentials start from different gate values.
+    /// Results come back in protocol order.
+    ///
+    /// # Arguments
+    /// * `protocols` - prescribed voltages in mV, one slice per sweep.
+    /// * `gates0` - initial gate values for each sweep, in
+    ///   `ModelSpec::gates` order.
+    /// * `ca0` - initial intracellular Ca²⁺ for each sweep in mM.
+    /// * `dt` - time step in ms.
     pub fn simulate_voltage_clamp_batch(
         &self,
         protocols: &[&[f64]],
-        gates0: &[f64],
-        ca0: f64,
+        gates0: &[&[f64]],
+        ca0: &[f64],
         dt: f64,
     ) -> Result<Vec<Trace>, String> {
         if protocols.is_empty() {
             return Err("voltage_protocol batch must have at least one sweep".into());
         }
+        let n_sweeps = protocols.len();
+        if gates0.len() != n_sweeps || ca0.len() != n_sweeps {
+            return Err(format!(
+                "expected one initial state per sweep ({n_sweeps}), got {} gate \
+                 rows and {} Ca²⁺ values",
+                gates0.len(),
+                ca0.len()
+            ));
+        }
         protocols
             .par_iter()
-            .map(|v_protocol| self.simulate_voltage_clamp(v_protocol, gates0, ca0, dt))
+            .zip(gates0.par_iter())
+            .zip(ca0.par_iter())
+            .map(|((v_protocol, gates), &ca)| {
+                self.simulate_voltage_clamp(v_protocol, gates, ca, dt)
+            })
             .collect()
     }
 }
@@ -265,24 +287,174 @@ mod tests {
     }
 
     #[test]
+    fn rejects_wrong_number_of_initial_gates() {
+        let err = one_gate_model()
+            .simulate_voltage_clamp(&[0.0], &[], 0.0, 0.025)
+            .unwrap_err();
+        assert!(err.contains("expected 1 initial gate values"), "{err}");
+    }
+
+    #[test]
+    fn rejects_empty_protocol() {
+        let err = one_gate_model()
+            .simulate_voltage_clamp(&[], &[0.3], 0.0, 0.025)
+            .unwrap_err();
+        assert!(err.contains("must not be empty"), "{err}");
+    }
+
+    #[test]
     fn empty_batch_is_rejected() {
         let err = one_gate_model()
-            .simulate_voltage_clamp_batch(&[], &[0.3], 0.0, 0.025)
+            .simulate_voltage_clamp_batch(&[], &[], &[], 0.025)
             .unwrap_err();
         assert!(err.contains("at least one sweep"), "{err}");
     }
 
     #[test]
-    fn batch_matches_sequential_runs() {
+    fn batch_rejects_mismatched_initial_states() {
+        let model = one_gate_model();
+        let protocol = [0.0; 10];
+        let err = model
+            .simulate_voltage_clamp_batch(&[&protocol, &protocol], &[&[0.3]], &[0.0, 0.0], 0.025)
+            .unwrap_err();
+        assert!(err.contains("one initial state per sweep"), "{err}");
+        let err = model
+            .simulate_voltage_clamp_batch(&[&protocol], &[&[0.3]], &[0.0, 0.0], 0.025)
+            .unwrap_err();
+        assert!(err.contains("one initial state per sweep"), "{err}");
+    }
+
+    #[test]
+    fn batch_matches_sequential_runs_from_per_sweep_states() {
         let model = one_gate_model();
         let protocols: Vec<Vec<f64>> = (0..5).map(|k| vec![-80.0 + 20.0 * k as f64; 300]).collect();
+        let gates: Vec<Vec<f64>> = (0..5).map(|k| vec![0.1 + 0.15 * k as f64]).collect();
+        let ca0: Vec<f64> = (0..5).map(|k| 1e-4 * k as f64).collect();
         let refs: Vec<&[f64]> = protocols.iter().map(Vec::as_slice).collect();
+        let gate_refs: Vec<&[f64]> = gates.iter().map(Vec::as_slice).collect();
         let batch = model
-            .simulate_voltage_clamp_batch(&refs, &[0.3], 0.0, 0.025)
+            .simulate_voltage_clamp_batch(&refs, &gate_refs, &ca0, 0.025)
             .unwrap();
-        for (trace, v) in batch.iter().zip(&protocols) {
-            let single = model.simulate_voltage_clamp(v, &[0.3], 0.0, 0.025).unwrap();
+        for (k, trace) in batch.iter().enumerate() {
+            let single = model
+                .simulate_voltage_clamp(&protocols[k], &gates[k], ca0[k], 0.025)
+                .unwrap();
             assert_eq!(trace.data, single.data);
+            // Each sweep starts from its own gate value, not the first sweep's.
+            assert_eq!(trace.data[3], gates[k][0]);
         }
+    }
+
+    /// A voltage-gated Ca²⁺ channel (gate `m`) and a Ca²⁺-activated K⁺
+    /// channel (gate `q`), with Ca²⁺ dynamics and φ = 3.
+    ///
+    /// `m` has voltage-only rates α = 0.1·exp(V/20), β = 0.1; `q` has
+    /// Ca²⁺-only rates α = Ca/(Ca + 0.001), β = 0.2.
+    fn calcium_model() -> Model {
+        let json = r#"{
+            "version": 3, "c_m": 1.0, "phi": 3.0, "exp_clip": 100,
+            "v_clamp_mv": [-150, 150], "gate_bounds": [0, 1], "ca_floor_mm": 1e-7,
+            "gates": [
+                {"name": "m", "uses_calcium": false,
+                 "kinetics": {"form": "alpha_beta",
+                              "alpha": {"op": "Exp", "k": 0.1, "vh": 0.0, "s": 20.0},
+                              "beta": {"op": "Const", "value": 0.1}}},
+                {"name": "q", "uses_calcium": true,
+                 "kinetics": {"form": "alpha_beta",
+                              "alpha": {"op": "Hill", "kd": 0.001, "n": 1},
+                              "beta": {"op": "Const", "value": 0.2}}}
+            ],
+            "channels": [
+                {"name": "CaL", "g_max": 1.0, "gates": [[0, 1]],
+                 "carries_calcium": true, "e_rev": null},
+                {"name": "KCa", "g_max": 2.0, "gates": [[1, 1]],
+                 "carries_calcium": false, "e_rev": -80.0}
+            ],
+            "calcium_nernst": {"ca_out": 2.0, "temperature_k": 310.0, "floor_mm": 1e-6,
+                               "gas_constant": 8.314, "faraday": 96485.0},
+            "calcium_dynamics": {"alpha_ca": 0.002, "tau_ca": 80.0, "ca_rest": 5e-5}
+        }"#;
+        Model::from_json(json).unwrap()
+    }
+
+    #[test]
+    fn calcium_dependent_gates_follow_stage_calcium() {
+        // A reference RK4 written out from the equations: every stage
+        // re-evaluates q's rates at that stage's Ca²⁺, and dCa/dt is driven
+        // by the Ca²⁺ current at the prescribed voltage with the live E_Ca.
+        let model = calcium_model();
+        let (v, dt, phi) = (-20.0_f64, 0.025_f64, 3.0_f64);
+        let e_ca = |ca: f64| (8.314 * 310.0 / (2.0 * 96485.0)) * 1000.0 * (2.0 / ca.max(1e-6)).ln();
+        let derivs = |m: f64, q: f64, ca: f64| {
+            let (am, bm) = (phi * (0.1 * (v / 20.0).exp()), phi * 0.1);
+            let (aq, bq) = (phi * (ca / (ca + 0.001)), phi * 0.2);
+            let i_ca = 1.0 * m * (v - e_ca(ca));
+            let dca = -0.002 * i_ca - (ca - 5e-5) / 80.0;
+            (am * (1.0 - m) - bm * m, aq * (1.0 - q) - bq * q, dca)
+        };
+        let (mut m, mut q, mut ca) = (0.2_f64, 0.05_f64, 5e-5_f64);
+        let n_steps = 200;
+        let trace = model
+            .simulate_voltage_clamp(&vec![v; n_steps], &[m, q], ca, dt)
+            .unwrap();
+        // Columns: voltage, I_CaL, I_KCa, Itotal, m, q, ca.
+        assert_eq!(trace.n_columns, 7);
+        for step in 1..n_steps {
+            let (m1, q1, c1) = derivs(m, q, ca);
+            let (m2, q2, c2) = derivs(m + 0.5 * dt * m1, q + 0.5 * dt * q1, ca + 0.5 * dt * c1);
+            let (m3, q3, c3) = derivs(m + 0.5 * dt * m2, q + 0.5 * dt * q2, ca + 0.5 * dt * c2);
+            let (m4, q4, c4) = derivs(m + dt * m3, q + dt * q3, ca + dt * c3);
+            m += dt / 6.0 * (m1 + 2.0 * m2 + 2.0 * m3 + m4);
+            q += dt / 6.0 * (q1 + 2.0 * q2 + 2.0 * q3 + q4);
+            ca += dt / 6.0 * (c1 + 2.0 * c2 + 2.0 * c3 + c4);
+            let row = &trace.data[step * trace.n_columns..(step + 1) * trace.n_columns];
+            for (got, want, name) in [(row[4], m, "m"), (row[5], q, "q"), (row[6], ca, "ca")] {
+                assert!(
+                    (got - want).abs() <= 1e-12 * want.abs(),
+                    "step {step} {name}: {got} vs {want}"
+                );
+            }
+            let i_ca = m * (v - e_ca(ca));
+            let i_k = 2.0 * q * (v + 80.0);
+            assert!(
+                (row[1] - i_ca).abs() <= 1e-12 * i_ca.abs(),
+                "step {step} I_CaL"
+            );
+            assert!(
+                (row[2] - i_k).abs() <= 1e-12 * i_k.abs(),
+                "step {step} I_KCa"
+            );
+        }
+        // The inward Ca²⁺ current raises Ca²⁺, which opens q.
+        assert!(ca > 5e-4, "Ca²⁺ should accumulate: {ca}");
+        assert!(q > 0.3, "q should open with Ca²⁺: {q}");
+    }
+
+    #[test]
+    fn calcium_stays_constant_without_dynamics() {
+        // Without Ca²⁺ dynamics there is no Ca²⁺ column and q relaxes at the
+        // fixed initial Ca²⁺.
+        let json = r#"{
+            "version": 3, "c_m": 1.0, "phi": 1.0, "exp_clip": 100,
+            "v_clamp_mv": [-150, 150], "gate_bounds": [0, 1], "ca_floor_mm": 0,
+            "gates": [{"name": "q", "uses_calcium": true,
+                       "kinetics": {"form": "alpha_beta",
+                                    "alpha": {"op": "Hill", "kd": 0.001, "n": 1},
+                                    "beta": {"op": "Const", "value": 0.2}}}],
+            "channels": [{"name": "KCa", "g_max": 2.0, "gates": [[0, 1]],
+                          "carries_calcium": false, "e_rev": -80.0}],
+            "calcium_nernst": null, "calcium_dynamics": null
+        }"#;
+        let model = Model::from_json(json).unwrap();
+        let ca = 0.001;
+        let trace = model
+            .simulate_voltage_clamp(&vec![0.0; 8001], &[0.0], ca, 0.025)
+            .unwrap();
+        // Columns: voltage, I_KCa, Itotal, q.
+        assert_eq!(trace.n_columns, 4);
+        let alpha = ca / (ca + 0.001);
+        let q_inf = alpha / (alpha + 0.2);
+        let q_end = trace.data[8000 * trace.n_columns + 3];
+        assert!((q_end - q_inf).abs() < 1e-9, "{q_end} vs {q_inf}");
     }
 }

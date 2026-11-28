@@ -88,14 +88,14 @@ impl PyModel {
 
     /// Run one voltage-clamp sweep per row of `v_protocol` in parallel.
     ///
-    /// Returns an `(n_sweeps, n_steps, n_columns)` array. Every sweep starts
-    /// from the same initial state.
+    /// Row `k` of `gates0` and entry `k` of `ca0` are sweep `k`'s initial
+    /// state. Returns an `(n_sweeps, n_steps, n_columns)` array.
     fn simulate_voltage_clamp_batch<'py>(
         &self,
         py: Python<'py>,
         v_protocol: PyReadonlyArray2<'py, f64>,
-        gates0: Vec<f64>,
-        ca0: f64,
+        gates0: PyReadonlyArray2<'py, f64>,
+        ca0: Vec<f64>,
         dt: f64,
     ) -> PyResult<Bound<'py, PyArray3<f64>>> {
         let protocols: Vec<Vec<f64>> = v_protocol
@@ -104,11 +104,18 @@ impl PyModel {
             .into_iter()
             .map(|row| row.to_vec())
             .collect();
+        let gates: Vec<Vec<f64>> = gates0
+            .as_array()
+            .rows()
+            .into_iter()
+            .map(|row| row.to_vec())
+            .collect();
         let traces = py
             .detach(|| {
                 let refs: Vec<&[f64]> = protocols.iter().map(Vec::as_slice).collect();
+                let gate_refs: Vec<&[f64]> = gates.iter().map(Vec::as_slice).collect();
                 self.inner
-                    .simulate_voltage_clamp_batch(&refs, &gates0, ca0, dt)
+                    .simulate_voltage_clamp_batch(&refs, &gate_refs, &ca0, dt)
             })
             .map_err(PyValueError::new_err)?;
         let (n_steps, n_cols) = traces.first().map_or((0, 0), |t| (t.n_steps, t.n_columns));

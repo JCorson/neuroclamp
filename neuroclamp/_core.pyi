@@ -102,22 +102,27 @@ class Model:
     def simulate_voltage_clamp_batch(
         self,
         v_protocol: NDArray[np.float64],
-        gates0: Sequence[float],
-        ca0: float,
+        gates0: NDArray[np.float64],
+        ca0: Sequence[float],
         dt: float,
     ) -> NDArray[np.float64]:
         """Run one voltage-clamp sweep per row of ``v_protocol`` in parallel.
 
+        Each sweep starts from its own state, since a voltage-clamp run starts
+        from the steady state at its protocol's first voltage.
+
         Args:
             v_protocol: ``(n_sweeps, n_steps)`` prescribed voltages in mV.
-            gates0: Initial gate values, in spec order.
-            ca0: Initial intracellular Ca²⁺ in mM.
+            gates0: ``(n_sweeps, n_gates)`` initial gate values, one row per
+                sweep, in spec order.
+            ca0: Initial intracellular Ca²⁺ in mM, one value per sweep.
             dt: Time step in ms.
 
         Returns:
             An ``(n_sweeps, n_steps, n_columns)`` array.
 
         Raises:
-            ValueError: If ``v_protocol`` is empty or ``gates0`` has the wrong
-                length.
+            ValueError: If ``v_protocol`` is empty, ``gates0`` or ``ca0`` does
+                not have one entry per sweep, or a row of ``gates0`` has the
+                wrong length.
         """
